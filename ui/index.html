@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>indir</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <form id="add" class="bar" autocomplete="off">
+    <label class="field">
+      <svg class="field-icon" viewBox="0 0 20 20" aria-hidden="true">
+        <path d="M6 3v8M10 3v10M14 3v8" />
+        <path d="M5 11l5 5 5-5" />
+      </svg>
+      <input id="link" type="text" inputmode="url" spellcheck="false" autocapitalize="off"
+             placeholder="Paste a link" aria-label="Link to download">
+    </label>
+    <button class="primary" type="submit">Download</button>
+  </form>
+  <p id="problem" class="problem" role="alert" hidden></p>
+
+  <main id="list" class="list" aria-label="Downloads"></main>
+
+  <section id="empty" class="empty" hidden>
+    <div class="demo" aria-hidden="true">
+      <span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span>
+    </div>
+    <h1>Paste a link.</h1>
+    <p>indir fetches the file in <span id="parts">8</span> parts at once, so it arrives sooner.
+      Pause whenever you like: it carries on where it stopped, even after a restart.</p>
+    <p class="keys" id="keys"></p>
+  </section>
+
+  <footer class="status">
+    <span id="summary" class="summary"></span>
+    <button id="update" class="pill" type="button" hidden></button>
+    <button id="clear" class="quiet" type="button" hidden>Clear finished</button>
+    <button id="open-settings" class="icon" type="button" aria-label="Settings" title="Settings">
+      <svg viewBox="0 0 20 20" aria-hidden="true">
+        <path d="M3 6h9M15 6h2M3 14h2M8 14h9" />
+        <circle cx="13.5" cy="6" r="1.8" />
+        <circle cx="6.5" cy="14" r="1.8" />
+      </svg>
+    </button>
+  </footer>
+
+  <div id="settings" class="sheet" hidden>
+    <div class="sheet-card" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+      <header>
+        <h2 id="settings-title">Settings</h2>
+        <button class="icon" type="button" data-close aria-label="Close settings">
+          <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 5l10 10M15 5L5 15" /></svg>
+        </button>
+      </header>
+      <section>
+        <h3>Save downloads to</h3>
+        <div class="folder">
+          <span id="folder" class="path"></span>
+          <button id="change-folder" type="button">Change…</button>
+        </div>
+      </section>
+      <section>
+        <h3 id="connections-title">Connections per download</h3>
+        <div id="connections" class="segmented" role="radiogroup" aria-labelledby="connections-title">
+          <button type="button" role="radio" data-value="1">1</button>
+          <button type="button" role="radio" data-value="2">2</button>
+          <button type="button" role="radio" data-value="4">4</button>
+          <button type="button" role="radio" data-value="8">8</button>
+          <button type="button" role="radio" data-value="16">16</button>
+        </div>
+        <p class="hint">More connections usually means more speed. Some servers allow only a few;
+          if downloads from one keep failing, try fewer.</p>
+      </section>
+      <footer>
+        <span>indir <span id="version"></span>, free and open source</span>
+        <button id="project" class="link" type="button">Source and updates</button>
+      </footer>
+    </div>
+  </div>
+
+  <div id="drop" class="drop" hidden><span>Drop the link to download it</span></div>
+</body>
+</html>

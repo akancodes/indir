@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "The window may listen for indir's progress events. indir's own commands need no permission, and nothing else is allowed.",
+  "windows": ["main"],
+  "permissions": ["core:event:default"]
+}

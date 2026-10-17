@@ -1,0 +1,746 @@
+/* indir's window. One loud thing, the strip: the file as one bar, each
+   connection's part filling from its own start. Everything else stays quiet. */
+
+:root {
+  color-scheme: light dark;
+  --bg: #f6f7f9;
+  --surface: #ffffff;
+  --ink: #111318;
+  --muted: #5f6673;
+  --line: #e2e5ea;
+  --lane: #e3e7f2;
+  --bytes: #3347f5;
+  --action: #3347f5;
+  --bytes-ring: rgba(51, 71, 245, 0.2);
+  --head: #a4aeff;
+  --done: #129a55;
+  --paused: #a3abbb;
+  --danger: #c93a16;
+  --shadow: 0 1px 2px rgba(17, 19, 24, 0.06), 0 6px 20px rgba(17, 19, 24, 0.05);
+  --backdrop: rgba(17, 19, 24, 0.28);
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI", system-ui, Ubuntu, Cantarell,
+    "Noto Sans", sans-serif;
+  --mono: ui-monospace, "SF Mono", "Cascadia Mono", "Segoe UI Mono", Menlo, Consolas, "DejaVu Sans Mono",
+    "Liberation Mono", monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0e1014;
+    --surface: #171a20;
+    --ink: #e9ebef;
+    --muted: #949bab;
+    --line: #262a33;
+    --lane: #1f2433;
+    --bytes: #7385ff;
+    /* Deeper than the bytes, so white text on it stays readable. */
+    --action: #4a5cf0;
+    --bytes-ring: rgba(115, 133, 255, 0.28);
+    --head: #c8ceff;
+    --done: #34c77b;
+    --paused: #596278;
+    --danger: #ff7a59;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 6px 20px rgba(0, 0, 0, 0.3);
+    --backdrop: rgba(0, 0, 0, 0.5);
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--ink);
+  font: 14px/1.45 var(--sans);
+  -webkit-font-smoothing: antialiased;
+  cursor: default;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+button:focus-visible,
+input:focus-visible {
+  outline: 2px solid var(--bytes);
+  outline-offset: 2px;
+}
+
+svg {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* The link field */
+
+.bar {
+  display: flex;
+  gap: 8px;
+  padding: 16px 16px 10px;
+}
+
+.field {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.field:focus-within {
+  border-color: var(--bytes);
+  box-shadow: 0 0 0 3px var(--bytes-ring), var(--shadow);
+}
+
+.field-icon {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  color: var(--bytes);
+}
+
+.field input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: inherit;
+  font: 15px var(--sans);
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.field input::placeholder {
+  color: var(--muted);
+}
+
+/* The field itself shows the focus. */
+.field input:focus-visible {
+  outline: none;
+}
+
+.primary {
+  flex-shrink: 0;
+  height: 44px;
+  padding: 0 20px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--action);
+  color: #fff;
+  font-weight: 600;
+}
+
+.primary:active {
+  transform: translateY(1px);
+}
+
+.problem {
+  margin: -2px 16px 6px;
+  color: var(--danger);
+  font-size: 13px;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.bar.shake {
+  animation: shake 0.3s;
+}
+
+@keyframes shake {
+  25% { transform: translateX(-4px); }
+  75% { transform: translateX(4px); }
+}
+
+/* The list */
+
+.list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 16px 8px;
+}
+
+.list:empty {
+  display: none;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr);
+  gap: 14px;
+  padding: 14px 4px 13px;
+  border-bottom: 1px solid var(--line);
+}
+
+.row:last-child {
+  border-bottom: 0;
+}
+
+.badge {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: var(--lane);
+  font: 700 10.5px var(--mono);
+  letter-spacing: 0.02em;
+}
+
+.top {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 26px;
+}
+
+.name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-weight: 600;
+}
+
+.actions {
+  display: flex;
+  flex-shrink: 0;
+  gap: 6px;
+}
+
+.actions button {
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  font-size: 12.5px;
+  font-weight: 500;
+}
+
+.actions button:hover {
+  border-color: var(--muted);
+}
+
+.actions .remove {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  padding: 0;
+  color: var(--muted);
+}
+
+.actions .remove svg {
+  width: 14px;
+  height: 14px;
+}
+
+.actions .remove.confirm {
+  width: auto;
+  padding: 0 10px;
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+/* The strip */
+
+.strip {
+  position: relative;
+  height: 10px;
+  margin: 8px 0 7px;
+  overflow: hidden;
+  border-radius: 5px;
+  transition: height 0.4s ease 0.35s, margin 0.4s ease 0.35s;
+}
+
+.part {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  overflow: hidden;
+  background: var(--lane);
+  border-right: 2px solid var(--bg);
+  transition: border-right-width 0.45s ease;
+}
+
+.part:last-child {
+  border-right-width: 0;
+}
+
+.fill {
+  position: relative;
+  display: block;
+  width: 0;
+  height: 100%;
+  background: var(--bytes);
+  transition: width 0.5s linear, background-color 0.45s ease;
+}
+
+/* Where each connection is writing right now. */
+.row[data-status="downloading"] .part:not(.complete) .fill::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--head);
+  animation: head 1.1s ease-in-out infinite;
+}
+
+@keyframes head {
+  50% { opacity: 0.3; }
+}
+
+/* The server didn't say how big the file is. */
+.strip.unknown .fill {
+  width: 30% !important;
+  animation: sweep 1.4s ease-in-out infinite;
+}
+
+@keyframes sweep {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(340%); }
+}
+
+.row[data-status="paused"] .fill {
+  background: var(--paused);
+}
+
+.row[data-status="failed"] .fill {
+  background: var(--danger);
+}
+
+/* Finished: the parts close up into one bar, and the bar settles. */
+.row[data-status="done"] .part {
+  border-right-width: 0;
+}
+
+.row[data-status="done"] .fill {
+  background: var(--done);
+}
+
+/* The strip's own ground is green too, so no seam shows between parts. */
+.row[data-status="done"] .strip {
+  height: 4px;
+  margin: 6px 0 5px;
+  background: var(--done);
+}
+
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 14px;
+  color: var(--muted);
+  font: 12px/1.5 var(--mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.meta .error {
+  color: var(--danger);
+  font-family: var(--sans);
+  font-size: 12.5px;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+/* Nothing on the list yet */
+
+.empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 8px 24px 32px;
+  text-align: center;
+}
+
+.empty h1 {
+  margin: 14px 0 0;
+  font-size: 30px;
+  font-weight: 750;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+}
+
+.empty p {
+  max-width: 400px;
+  margin: 0;
+  color: var(--muted);
+}
+
+.keys {
+  font-size: 12.5px;
+}
+
+kbd {
+  display: inline-block;
+  min-width: 22px;
+  padding: 1px 6px;
+  border: 1px solid var(--line);
+  border-bottom-width: 2px;
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--ink);
+  font: 600 11.5px var(--mono);
+}
+
+.demo {
+  display: flex;
+  gap: 4px;
+  width: min(380px, 78vw);
+  height: 12px;
+  animation: join 4.2s infinite;
+}
+
+.demo span {
+  position: relative;
+  flex: 1;
+  overflow: hidden;
+  border-radius: 3px;
+  background: var(--lane);
+}
+
+.demo span::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--bytes);
+  transform: scaleX(0);
+  transform-origin: left;
+  animation: lane 4.2s infinite;
+}
+
+/* Every lane finishes together, each at its own pace. */
+.demo span:nth-child(1)::before { animation-timing-function: cubic-bezier(0.2, 0.7, 0.5, 1); }
+.demo span:nth-child(2)::before { animation-timing-function: cubic-bezier(0.6, 0.1, 0.8, 0.6); }
+.demo span:nth-child(3)::before { animation-timing-function: cubic-bezier(0.3, 0.4, 0.4, 0.9); }
+.demo span:nth-child(4)::before { animation-timing-function: cubic-bezier(0.7, 0, 0.9, 1); }
+.demo span:nth-child(5)::before { animation-timing-function: cubic-bezier(0.1, 0.9, 0.6, 1); }
+.demo span:nth-child(6)::before { animation-timing-function: cubic-bezier(0.5, 0.2, 0.6, 0.8); }
+.demo span:nth-child(7)::before { animation-timing-function: cubic-bezier(0.3, 0.8, 0.9, 0.4); }
+.demo span:nth-child(8)::before { animation-timing-function: cubic-bezier(0.8, 0.3, 0.4, 0.9); }
+
+@keyframes lane {
+  0% { transform: scaleX(0); background: var(--bytes); opacity: 1; }
+  72% { transform: scaleX(1); background: var(--bytes); }
+  80% { transform: scaleX(1); background: var(--done); }
+  93% { transform: scaleX(1); background: var(--done); opacity: 1; }
+  100% { transform: scaleX(1); background: var(--done); opacity: 0; }
+}
+
+@keyframes join {
+  0%, 73% { gap: 4px; }
+  80%, 100% { gap: 0; }
+}
+
+/* The status line */
+
+.status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 42px;
+  padding: 0 10px 0 20px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+.summary {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-variant-numeric: tabular-nums;
+}
+
+.quiet,
+.link {
+  padding: 4px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+}
+
+.quiet:hover,
+.link:hover {
+  color: var(--ink);
+}
+
+.link {
+  padding: 0;
+  color: var(--bytes);
+}
+
+.link:hover {
+  color: var(--bytes);
+  text-decoration: underline;
+}
+
+.pill {
+  padding: 3px 10px;
+  border: 1px solid var(--bytes);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--bytes);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.icon {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+}
+
+.icon:hover {
+  background: var(--lane);
+  color: var(--ink);
+}
+
+.icon svg {
+  width: 18px;
+  height: 18px;
+}
+
+.status .icon svg circle {
+  fill: var(--bg);
+}
+
+/* Settings */
+
+.sheet {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: var(--backdrop);
+  animation: fade 0.15s ease;
+}
+
+.sheet[hidden],
+.drop[hidden],
+.empty[hidden],
+.problem[hidden] {
+  display: none;
+}
+
+.sheet-card {
+  width: min(440px, 100%);
+  padding: 18px 20px 16px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--surface);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.25);
+}
+
+.sheet-card header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.sheet-card h2 {
+  margin: 0;
+  font-size: 17px;
+}
+
+.sheet-card section {
+  padding: 12px 0;
+}
+
+.sheet-card h3 {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.folder {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* A long path is cut at its start, so the folder's own name stays in view.
+   The text sits in a <bdi>, which keeps its slashes where they belong. */
+.path {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  direction: rtl;
+  text-align: left;
+  padding: 7px 10px;
+  border-radius: 8px;
+  background: var(--bg);
+  font: 12px var(--mono);
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.folder button {
+  flex-shrink: 0;
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  font-weight: 500;
+}
+
+.segmented {
+  display: flex;
+  padding: 3px;
+  border-radius: 10px;
+  background: var(--bg);
+}
+
+.segmented button {
+  flex: 1;
+  height: 30px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  font: 600 13px var(--mono);
+}
+
+.segmented button[aria-checked="true"] {
+  background: var(--action);
+  color: #fff;
+}
+
+.hint {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+.sheet-card footer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 6px 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+/* A link dragged over the window */
+
+.drop {
+  position: fixed;
+  inset: 8px;
+  display: grid;
+  place-items: center;
+  border: 2px dashed var(--bytes);
+  border-radius: 16px;
+  background: var(--bytes-ring);
+  color: var(--bytes);
+  font-size: 16px;
+  font-weight: 650;
+  pointer-events: none;
+}
+
+@keyframes fade {
+  from { opacity: 0; }
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  border: 3px solid var(--bg);
+  border-radius: 10px;
+  background: var(--line);
+}
+
+/* A wide window: one line per download, in columns that line up. */
+@media (min-width: 1200px) {
+  .row {
+    grid-template-columns: 40px minmax(180px, 1fr) minmax(280px, 1.6fr) minmax(280px, 0.9fr) 230px;
+    grid-template-areas: "badge name strip meta actions";
+    align-items: center;
+    gap: 0 20px;
+    padding: 12px 4px;
+  }
+
+  .body,
+  .top {
+    display: contents;
+  }
+
+  .badge { grid-area: badge; }
+  .name { grid-area: name; }
+  .meta { grid-area: meta; }
+
+  .strip,
+  .row[data-status="done"] .strip {
+    grid-area: strip;
+    margin: 0;
+  }
+
+  .actions {
+    grid-area: actions;
+    justify-content: flex-end;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  .demo span::before {
+    transform: scaleX(0.7);
+  }
+
+  .demo span:nth-child(odd)::before {
+    transform: scaleX(0.45);
+  }
+}

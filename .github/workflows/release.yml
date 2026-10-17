@@ -1,0 +1,103 @@
+name: Release
+
+# Pushing a tag such as v0.1.0 builds indir for every system, attaches the
+# files to a draft release, and publishes it once every build has succeeded.
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  draft:
+    runs-on: ubuntu-latest
+    outputs:
+      id: ${{ steps.release.outputs.id }}
+    steps:
+      - uses: actions/checkout@v5
+      - id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=$(grep -m1 '^version' src-tauri/Cargo.toml | cut -d'"' -f2)
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME doesn't match the version in src-tauri/Cargo.toml ($version)."
+            exit 1
+          fi
+          # The notes: this version's entry in CHANGELOG.md, then which file to pick.
+          awk -v heading="## v$version " 'index($0, heading) == 1 { on = 1; next } /^## / { on = 0 } on' CHANGELOG.md > notes.md
+          cat .github/release-notes.md >> notes.md
+          id=$(gh api "repos/$GITHUB_REPOSITORY/releases" \
+            -f tag_name="$GITHUB_REF_NAME" -f name="indir $version" -F draft=true \
+            -F body=@notes.md --jq .id)
+          echo "id=$id" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: draft
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # One universal build runs on both Apple silicon and Intel Macs.
+          - os: macos-latest
+            args: --target universal-apple-darwin --bundles dmg
+            names: indir-mac[ext]
+          - os: windows-latest
+            args: --bundles nsis
+            names: indir-windows[setup][ext]
+          # The oldest supported Ubuntu, so the AppImage runs on older systems too.
+          - os: ubuntu-22.04
+            args: --bundles deb,rpm,appimage
+            names: indir-linux-[arch][ext]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ runner.os == 'macOS' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+      - uses: Swatinem/rust-cache@v2
+      - name: Linux libraries
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libxdo-dev librsvg2-dev patchelf
+      - run: npm ci
+      # Without a Developer ID the Mac app is signed ad hoc (tauri.conf.json),
+      # which macOS lets people open from Privacy & Security.
+      - uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          releaseId: ${{ needs.draft.outputs.id }}
+          tagName: ${{ github.ref_name }}
+          releaseDraft: true
+          args: ${{ matrix.args }}
+          # The same names in every release, so the README can link to
+          # releases/latest/download/<name>.
+          releaseAssetNamePattern: ${{ matrix.names }}
+          includeUpdaterJson: false
+          retryAttempts: 1
+      - name: Portable Windows app
+        if: runner.os == 'Windows'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp target/release/indir.exe indir-windows-portable.exe
+          gh api --method POST -H "Content-Type: application/octet-stream" \
+            "https://uploads.github.com/repos/$GITHUB_REPOSITORY/releases/${{ needs.draft.outputs.id }}/assets?name=indir-windows-portable.exe" \
+            --input indir-windows-portable.exe --silent
+
+  publish:
+    needs: [draft, build]
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api -X PATCH "repos/$GITHUB_REPOSITORY/releases/${{ needs.draft.outputs.id }}" -F draft=false -f make_latest=true
