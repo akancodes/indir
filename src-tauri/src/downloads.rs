@@ -430,8 +430,10 @@ impl Downloads {
     /// Writes the list to disk, counting only bytes that reached the disk,
     /// so it can always carry on from what it says.
     pub fn save(&self) {
-        let records: Vec<Record> = self.lock().items.iter().filter(|item| !item.removing).map(Item::record).collect();
+        // Held from the copy to the write, so a newer list is never written
+        // over by an older one.
         let _saving = self.saving.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        let records: Vec<Record> = self.lock().items.iter().filter(|item| !item.removing).map(Item::record).collect();
         if let Err(e) = store::write_json(&self.list_file, &records) {
             eprintln!("indir: couldn't save the list of downloads: {e}");
         }

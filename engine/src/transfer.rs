@@ -8,7 +8,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
 use futures_util::StreamExt;
-use reqwest::header::{CONTENT_RANGE, RANGE};
+use reqwest::header::{CONTENT_RANGE, IF_RANGE, RANGE};
 use reqwest::{Client, StatusCode};
 use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncSeekExt, AsyncWriteExt};
@@ -40,6 +40,11 @@ const QUIET: Duration = Duration::from_secs(5);
 const LOOK_AGAIN: Duration = Duration::from_millis(100);
 /// How often the speeds are read while parts download.
 const STEER_EVERY: Duration = Duration::from_millis(250);
+/// How often what has been written is made durable, so `state` may count it.
+const SYNC_EVERY: Duration = Duration::from_secs(2);
+/// How long a finished file may stay locked (by a virus scanner, say) before
+/// it can be given its name.
+const RENAME_TRIES: u32 = 30;
 /// Failed tries in a row, with no byte arriving, before a download gives up.
 const MAX_TRIES: u32 = 6;
 /// The most connections one download opens.
@@ -127,6 +132,13 @@ pub struct Transfer {
 
 struct Inner {
     state: State,
+    /// The state as of the last sync: every byte it counts is on disk for
+    /// sure, not just in the system's cache. This is what `state()` returns.
+    durable: State,
+    /// The link as given, and the address the parts come from: where it
+    /// redirected to, which may be a signed address that expires.
+    link: Option<Url>,
+    fetch_url: Option<Url>,
     /// Beside `state.parts`: what each part has received and whether a
     /// connection is on it.
     live: Vec<Live>,
@@ -206,7 +218,10 @@ impl Transfer {
         let live = state.parts.iter().map(|p| Live::new(p.done)).collect();
         Self {
             inner: Mutex::new(Inner {
+                durable: state.clone(),
                 state,
+                link: None,
+                fetch_url: None,
                 live,
                 streamed: 0,
                 streaming: false,
@@ -217,10 +232,10 @@ impl Transfer {
         }
     }
 
-    /// A copy of the state, counting only bytes already on disk: save it to
-    /// carry on after a restart, even one that wasn't planned.
+    /// A copy of the state, counting only bytes that are on disk for sure:
+    /// save it to carry on after a restart, even one that wasn't planned.
     pub fn state(&self) -> State {
-        self.lock().state.clone()
+        self.lock().durable.clone()
     }
 
     pub fn progress(&self) -> Progress {
@@ -264,32 +279,39 @@ impl Transfer {
             .ok()
             .filter(|url| matches!(url.scheme(), "http" | "https"))
             .ok_or_else(|| Stop::Fatal("This isn't a web link".into()))?;
-        let asked = Instant::now();
-        let probe = self.probe(client, &url, cancel).await?;
-        self.lock().patience = QUIET.max(asked.elapsed() * 4);
+        let (probe, answered_in) = self.probe(client, &url, cancel).await?;
+        {
+            let mut inner = self.lock();
+            inner.patience = QUIET.max(answered_in * 4);
+            inner.link = Some(url);
+            inner.fetch_url = Some(probe.url.clone());
+        }
         self.prepare(&probe, connections)?;
         if self.lock().state.resumable {
-            self.fetch_parts(client, &probe.url, connections, cancel).await?;
+            self.fetch_parts(client, connections, cancel).await?;
         } else {
             self.fetch_whole(client, &probe.url, cancel).await?;
         }
-        self.finish()
+        self.finish().await
     }
 
-    /// Asks the server about the file, trying again twice if it doesn't answer.
-    async fn probe(&self, client: &Client, url: &Url, cancel: &CancellationToken) -> Result<Probe, Stop> {
+    /// Asks the server about the file, trying again twice if it doesn't
+    /// answer. Returns the answer and how long the answering try took.
+    async fn probe(&self, client: &Client, url: &Url, cancel: &CancellationToken) -> Result<(Probe, Duration), Stop> {
         let mut tries = 0;
         loop {
+            let asked = Instant::now();
             let result = tokio::select! {
                 _ = cancel.cancelled() => return Err(Stop::Cancelled),
                 result = probe::probe(client, url) => result,
             };
             match result {
+                Ok(probe) => return Ok((probe, asked.elapsed())),
                 Err(Stop::Retry(_) | Stop::Busy(_)) if tries < 2 => {
                     tries += 1;
                     wait(cancel, Duration::from_secs(tries)).await?;
                 }
-                result => return result,
+                Err(stop) => return Err(stop),
             }
         }
     }
@@ -309,10 +331,12 @@ impl Transfer {
             }
             state.parts.clear();
         } else {
+            // A validator that changed, or went missing, means a different file.
+            let same_file = state.validator.is_none() || state.validator == probe.validator;
             let unchanged = state.resumable
                 && resumable
                 && state.size == probe.size
-                && !matches!((&state.validator, &probe.validator), (Some(was), Some(is)) if was != is)
+                && same_file
                 && fs::metadata(state.partial_path()).is_ok_and(|m| Some(m.len()) == state.size);
             if !unchanged {
                 let file = fs::OpenOptions::new()
@@ -335,6 +359,8 @@ impl Transfer {
         }
         *live = state.parts.iter().map(|p| Live::new(p.done)).collect();
         *streamed = 0;
+        // Done counts here are last session's durable ones, or zero.
+        inner.durable = inner.state.clone();
         Ok(())
     }
 
@@ -342,7 +368,6 @@ impl Transfer {
     async fn fetch_parts(
         self: &Arc<Self>,
         client: &Client,
-        url: &Url,
         connections: usize,
         cancel: &CancellationToken,
     ) -> Result<(), Stop> {
@@ -357,10 +382,12 @@ impl Transfer {
         };
         let mut workers = JoinSet::new();
         for _ in 0..connections {
-            let (me, client, url, stop) = (Arc::clone(self), client.clone(), url.clone(), stop.clone());
-            workers.spawn(async move { me.connection(&client, &url, &stop).await });
+            let (me, client, stop) = (Arc::clone(self), client.clone(), stop.clone());
+            workers.spawn(async move { me.connection(&client, &stop).await });
         }
         let mut ticks = tokio::time::interval(STEER_EVERY);
+        let mut last_sync = Instant::now();
+        let mut syncing: Option<tokio::task::JoinHandle<()>> = None;
         let mut problem = None;
         loop {
             tokio::select! {
@@ -375,9 +402,23 @@ impl Transfer {
                         }
                     }
                 }
-                _ = ticks.tick() => self.steer(&mut steering),
+                _ = ticks.tick() => {
+                    self.steer(&mut steering);
+                    // One sync at a time, in the background.
+                    if syncing.as_ref().is_none_or(|sync| sync.is_finished()) && last_sync.elapsed() >= SYNC_EVERY {
+                        let me = Arc::clone(self);
+                        syncing = Some(tokio::spawn(async move { me.sync().await }));
+                        last_sync = Instant::now();
+                    }
+                }
             }
         }
+        // Every connection has stopped and written what it had: one last sync
+        // makes all of it count, after any sync still running.
+        if let Some(sync) = syncing {
+            let _ = sync.await;
+        }
+        self.sync().await;
         if let Some(problem) = problem {
             return Err(problem);
         }
@@ -391,14 +432,19 @@ impl Transfer {
     }
 
     /// One connection: takes parts until every part is on its way or done.
-    async fn connection(&self, client: &Client, url: &Url, stop: &CancellationToken) -> Result<(), Stop> {
+    async fn connection(&self, client: &Client, stop: &CancellationToken) -> Result<(), Stop> {
         // How fast this connection fetched its last part, to compare with the others.
         let mut speed = None;
         loop {
             match self.take(speed) {
                 Take::Part(i) => {
                     let (started, before) = (Instant::now(), self.lock().live[i].received);
-                    let ended = self.fetch_part(client, url, i, stop).await;
+                    let ended = self.fetch_part(client, i, stop).await;
+                    // Stepping aside already let go of the part, under the lock;
+                    // another connection may have it by now.
+                    if let Ok(Ended::StepAside) = ended {
+                        return Ok(());
+                    }
                     let (after, left) = {
                         let mut inner = self.lock();
                         let Inner { state, live, .. } = &mut *inner;
@@ -408,10 +454,8 @@ impl Transfer {
                     // Taken over: this connection had gone quiet or slow, and
                     // the server may allow fewer fast connections than were
                     // opened, so it closes rather than look for more work.
-                    match ended? {
-                        Ended::Cut if left == 0 => return Ok(()),
-                        Ended::StepAside => return Ok(()),
-                        _ => {}
+                    if ended? == Ended::Cut && left == 0 {
+                        return Ok(());
                     }
                     let seconds = started.elapsed().as_secs_f64();
                     if after > before && seconds > 0.0 {
@@ -487,15 +531,31 @@ impl Transfer {
     }
 
     /// Whether part `i`'s connection, told by the server that it's busy,
-    /// should leave the part to the others: only while others are working.
-    /// Decided under the lock, so the last connection always stays.
+    /// should leave the part to the others: only while another connection is
+    /// working and hasn't been told to stop. Decided under the lock, so the
+    /// last connection always stays.
     fn step_aside(&self, i: usize) -> bool {
         let mut inner = self.lock();
-        if inner.live.iter().enumerate().any(|(j, l)| j != i && l.busy) {
+        if inner.live.iter().enumerate().any(|(j, l)| j != i && l.busy && !l.cut.is_cancelled()) {
             inner.live[i].busy = false;
             true
         } else {
             false
+        }
+    }
+
+    /// Makes what has been written durable, then lets `state()` count it.
+    /// The copy is taken first, so everything it counts was written before
+    /// the sync began, and is on disk once it returns.
+    async fn sync(&self) {
+        let (copy, path) = {
+            let inner = self.lock();
+            (inner.state.clone(), inner.state.partial_path())
+        };
+        let synced =
+            tokio::task::spawn_blocking(move || fs::OpenOptions::new().write(true).open(path)?.sync_data()).await;
+        if let Ok(Ok(())) = synced {
+            self.lock().durable = copy;
         }
     }
 
@@ -522,12 +582,12 @@ impl Transfer {
 
     /// Fetches what's left of part `i`, opening the connection again after
     /// network trouble, waiting longer each time.
-    async fn fetch_part(&self, client: &Client, url: &Url, i: usize, stop: &CancellationToken) -> Result<Ended, Stop> {
+    async fn fetch_part(&self, client: &Client, i: usize, stop: &CancellationToken) -> Result<Ended, Stop> {
         let cut = self.lock().live[i].cut.clone();
         let mut tries = 0;
         loop {
             let before = self.lock().live[i].received;
-            match self.fetch_range(client, url, i, stop, &cut).await {
+            match self.fetch_range(client, i, stop, &cut).await {
                 Err(Stop::Busy(_)) if self.step_aside(i) => return Ok(Ended::StepAside),
                 Err(Stop::Retry(why) | Stop::Busy(why)) => {
                     if self.lock().live[i].received > before {
@@ -553,41 +613,58 @@ impl Transfer {
     async fn fetch_range(
         &self,
         client: &Client,
-        url: &Url,
         i: usize,
         stop: &CancellationToken,
         cut: &CancellationToken,
     ) -> Result<Ended, Stop> {
-        let (from, end, path) = {
+        let (from, end, path, size, validator, link, fetch_url) = {
             let mut inner = self.lock();
             inner.live[i].heard = Instant::now();
             inner.live[i].flowing = None;
             let part = inner.state.parts[i];
-            (part.start + inner.live[i].received, part.end, inner.state.partial_path())
+            let state = &inner.state;
+            (
+                part.start + inner.live[i].received,
+                part.end,
+                state.partial_path(),
+                state.size,
+                // A weak ETag can't be used in If-Range: servers would never match it.
+                state.validator.clone().filter(|v| !v.starts_with("W/")),
+                inner.link.clone(),
+                inner.fetch_url.clone(),
+            )
         };
         if from >= end {
             return Ok(Ended::Complete);
         }
-        let request = client.get(url.clone()).header(RANGE, format!("bytes={from}-{}", end - 1));
-        let response = tokio::select! {
-            _ = stop.cancelled() => return Err(Stop::Cancelled),
-            _ = cut.cancelled() => return Ok(Ended::Cut),
-            response = tokio::time::timeout(STALL, request.send()) => match response {
-                Ok(response) => response.map_err(|e| Stop::Retry(describe(&e)))?,
-                Err(_) => return Err(Stop::Retry("The server stopped answering".into())),
-            },
+        let (Some(link), Some(fetch_url)) = (link, fetch_url) else {
+            return Err(Stop::Fatal("The download has no address to fetch from".into()));
         };
+        let range = (from, end, validator.as_deref());
+        let Some(mut response) = ask(client, &fetch_url, range, stop, cut).await? else { return Ok(Ended::Cut) };
+        if matches!(response.status().as_u16(), 401 | 403 | 410) && fetch_url != link {
+            // Links that redirect often lead to a signed address that expires
+            // after a while. Asking the link itself gets a fresh one.
+            let Some(fresh) = ask(client, &link, range, stop, cut).await? else { return Ok(Ended::Cut) };
+            response = fresh;
+            if response.status().is_success() {
+                self.lock().fetch_url = Some(response.url().clone());
+            }
+        }
+        let changed = "The file on the server changed while it was downloading. Try again to start over.";
         match response.status() {
             StatusCode::PARTIAL_CONTENT => {
-                let start = response
-                    .headers()
-                    .get(CONTENT_RANGE)
-                    .and_then(|v| v.to_str().ok())
-                    .and_then(probe::content_range_start);
-                if start != Some(from) {
+                let content_range = response.headers().get(CONTENT_RANGE).and_then(|v| v.to_str().ok());
+                if content_range.and_then(probe::content_range_start) != Some(from) {
                     return Err(Stop::Fatal("The server sent the wrong part of the file".into()));
                 }
+                let total = content_range.and_then(probe::content_range_total);
+                if total.is_some() && total != size {
+                    return Err(Stop::Fatal(changed.into()));
+                }
             }
+            // With If-Range, a whole file instead of the part means it changed.
+            StatusCode::OK if validator.is_some() => return Err(Stop::Fatal(changed.into())),
             StatusCode::OK if from == 0 => {}
             StatusCode::OK => {
                 return Err(Stop::Fatal(
@@ -601,7 +678,6 @@ impl Transfer {
             .open(&path)
             .await
             .map_err(|e| file_failure("open the file", e))?;
-        file.seek(SeekFrom::Start(from)).await.map_err(|e| file_failure("write the file", e))?;
         let mut pending = Vec::with_capacity(WRITE_SIZE);
         let mut body = response.bytes_stream();
         let result = loop {
@@ -650,8 +726,18 @@ impl Transfer {
         (take as usize, remaining(&part, &live[i]) == 0)
     }
 
-    /// Writes part `i`'s pending bytes. They count as done only once the file has them.
+    /// Writes part `i`'s pending bytes where its done bytes end. They count as
+    /// done once the file has them, and as durable after the next sync.
+    /// Seeking every time makes a retry after a failed, partial write safe.
     async fn write(&self, file: &mut tokio::fs::File, pending: &mut Vec<u8>, i: usize) -> Result<(), Stop> {
+        if pending.is_empty() {
+            return Ok(());
+        }
+        let at = {
+            let inner = self.lock();
+            inner.state.parts[i].start + inner.state.parts[i].done
+        };
+        file.seek(SeekFrom::Start(at)).await.map_err(|e| file_failure("write the file", e))?;
         let written = write_out(file, pending).await?;
         self.lock().state.parts[i].done += written;
         Ok(())
@@ -709,18 +795,34 @@ impl Transfer {
 
     /// Gives the finished file its real name, or the next free one if that
     /// name was taken in the meantime.
-    fn finish(&self) -> Result<PathBuf, Stop> {
-        let mut inner = self.lock();
-        let state = &mut inner.state;
-        let mut name = state.name.clone();
+    async fn finish(&self) -> Result<PathBuf, Stop> {
+        let (dir, wanted, partial) = {
+            let inner = self.lock();
+            (inner.state.dir.clone(), inner.state.name.clone(), inner.state.partial_path())
+        };
+        let mut name = wanted.clone();
         let mut n = 0;
-        while state.dir.join(&name).exists() {
+        while dir.join(&name).exists() {
             n += 1;
-            name = name::numbered(&state.name, n);
+            name = name::numbered(&wanted, n);
         }
-        fs::rename(state.partial_path(), state.dir.join(&name)).map_err(|e| file_failure("finish the file", e))?;
-        state.name = name;
-        Ok(state.path())
+        let mut tries = 0;
+        loop {
+            match fs::rename(&partial, dir.join(&name)) {
+                Ok(()) => break,
+                // On Windows a virus scanner or the search indexer may hold a
+                // file that was just written, for a moment.
+                Err(e) if tries < RENAME_TRIES && e.kind() != io::ErrorKind::NotFound => {
+                    tries += 1;
+                    tokio::time::sleep(Duration::from_millis(100)).await;
+                }
+                Err(e) => return Err(file_failure("finish the file", e)),
+            }
+        }
+        let mut inner = self.lock();
+        inner.state.name = name;
+        inner.durable = inner.state.clone();
+        Ok(inner.state.path())
     }
 
     fn lock(&self) -> MutexGuard<'_, Inner> {
@@ -796,6 +898,29 @@ fn make_sparse(file: &fs::File) {
             &mut returned,
             std::ptr::null_mut(),
         );
+    }
+}
+
+/// Asks for the bytes `from..end` of the file at `url`, with an If-Range
+/// validator if there is one. `None` means the part was cut first.
+async fn ask(
+    client: &Client,
+    url: &Url,
+    (from, end, validator): (u64, u64, Option<&str>),
+    stop: &CancellationToken,
+    cut: &CancellationToken,
+) -> Result<Option<reqwest::Response>, Stop> {
+    let mut request = client.get(url.clone()).header(RANGE, format!("bytes={from}-{}", end - 1));
+    if let Some(validator) = validator {
+        request = request.header(IF_RANGE, validator);
+    }
+    tokio::select! {
+        _ = stop.cancelled() => Err(Stop::Cancelled),
+        _ = cut.cancelled() => Ok(None),
+        response = tokio::time::timeout(STALL, request.send()) => match response {
+            Ok(response) => response.map(Some).map_err(|e| Stop::Retry(describe(&e))),
+            Err(_) => Err(Stop::Retry("The server stopped answering".into())),
+        },
     }
 }
 
@@ -887,7 +1012,7 @@ mod tests {
         transfer.accept(1, MIN_PART as usize);
         // Part 0 has 5 MB left, part 1 has 4 MB: the third connection splits part 0.
         assert_eq!(transfer.take(None), Take::Part(2));
-        let parts = transfer.state().parts;
+        let parts = transfer.lock().state.parts.clone();
         assert_eq!(parts[0], Part { start: 0, end: 5 * MIN_PART / 2, done: 0 });
         assert_eq!(parts[2], Part { start: 5 * MIN_PART / 2, end: 5 * MIN_PART, done: 0 });
         // Part 0 now stops at its new end.
@@ -917,7 +1042,7 @@ mod tests {
         // 1000 bytes in two seconds, against a connection doing 10 MB a second.
         transfer.lock().live[0].flowing = Some((Instant::now() - Duration::from_secs(2), 0));
         assert_eq!(transfer.take(Some(10e6)), Take::Part(2));
-        assert_eq!(transfer.state().parts[2], Part { start: 1000, end: 2 * MIN_PART, done: 0 });
+        assert_eq!(transfer.lock().state.parts.clone()[2], Part { start: 1000, end: 2 * MIN_PART, done: 0 });
         assert!(transfer.lock().live[0].cut.is_cancelled());
     }
 
@@ -935,7 +1060,7 @@ mod tests {
         assert_eq!(transfer.take(Some(10e6)), Take::Part(2));
         assert!(!transfer.lock().live[0].cut.is_cancelled());
         let left = 4 * MIN_PART - 2_000_000;
-        assert_eq!(transfer.state().parts[0].end, 4 * MIN_PART - left / 2);
+        assert_eq!(transfer.lock().state.parts.clone()[0].end, 4 * MIN_PART - left / 2);
     }
 
     #[test]
@@ -951,7 +1076,7 @@ mod tests {
         transfer.lock().live[0].heard -= QUIET;
         assert_eq!(transfer.take(None), Take::Part(2));
         assert!(cut.is_cancelled());
-        let parts = transfer.state().parts;
+        let parts = transfer.lock().state.parts.clone();
         assert_eq!(parts[0].end, 1000);
         assert_eq!(parts[2], Part { start: 1000, end: MIN_PART, done: 0 });
     }

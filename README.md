@@ -39,8 +39,10 @@ one field to paste into, and two settings.
   the extras with "429 Too Many Requests". indir notices, tries one connection on its own, and keeps whichever way
   is faster. It is never meant to be slower than your browser.
 - **Pauses and resumes.** Stop a download and carry on later, even after quitting indir or restarting the
-  computer. If the file on the server changed in the meantime, indir notices and starts it over.
-- **Shrugs off bad connections.** A dropped or stalled connection is opened again exactly where it stopped.
+  computer. If the file on the server changes, while it downloads or in between, indir notices and starts over
+  rather than mix two versions.
+- **Shrugs off bad connections.** A dropped or stalled connection is opened again exactly where it stopped. A link
+  that leads to a signed address which expires, as GitHub's release downloads do, is simply asked again.
 - **Shows its work.** Each download's bar is the whole file, with every part filling in from its own start.
   When the file is complete, the parts close up into one bar.
 - **Stays out of your way.** Light and dark follow your system. The progress also shows on the taskbar button
@@ -82,16 +84,17 @@ each download may open: 1, 2, 4, 8 or 16. **Shortcuts:** Ctrl+L (⌘L on a Mac) 
    answer means the server can send any part of the file, and says how big it is. A server that can't gets one
    ordinary connection.
 2. **The file is split.** Into equal parts, one per connection, none smaller than 1 MB. Each connection asks for
-   its part with an HTTP `Range` request and writes it straight to its place in a `.indir` file next to where the
-   download ends up. Connections speak HTTP/1.1 on purpose: HTTP/2 would carry all of them over one TCP connection,
+   its part with an HTTP `Range` request, with `If-Range` so a file that changes on the server is noticed, and
+   writes it straight to its place in a `.indir` file next to where the download ends up. Connections speak HTTP/1.1 on purpose: HTTP/2 would carry all of them over one TCP connection,
    which is exactly what a download manager avoids.
 3. **Free connections help the others.** A connection that finishes takes over the second half of the biggest
    part still on its way. One that has sent nothing for 5 seconds, or crawls at a sixteenth of another's speed, is
    taken over whole and closed: some servers keep the extra connections at a trickle on purpose.
 4. **The speed is watched.** If connections crawl like that, indir tries a single connection for a few seconds
    and keeps it if it does better than all of them together.
-5. **Nothing is counted until it's on disk.** Progress is saved every few seconds, counting only bytes that have
-   reached the disk, so a crash or a power cut costs a few seconds at most. When every byte is there, the
+5. **Nothing is counted until it's on disk.** Every two seconds indir asks the system to put what it has written
+   on the disk for good, and the progress it saves counts only those bytes, so a crash or a power cut costs a few
+   seconds at most. When every byte is there, the
    `.indir` file gets its real name. An existing file is never overwritten: a second `report.pdf` becomes
    `report (1).pdf`.
 
@@ -113,6 +116,8 @@ cargo run --release -p indir-engine --example get -- https://example.com/big.iso
 - **Where things are kept.** The list of downloads and the settings are two small JSON files in your app-data
   folder: `%APPDATA%\dev.akan.indir` on Windows, `~/Library/Application Support/dev.akan.indir` on macOS and
   `~/.local/share/dev.akan.indir` on Linux.
+- **Names are cleaned up.** A name from the server loses anything Windows, macOS or Linux would choke on, and the
+  invisible characters that could make `report.exe` pass for a PDF.
 - **Removing a download** takes it off the list. A finished file stays where it is; an unfinished one's
   `.indir` file is deleted.
 

@@ -2,7 +2,7 @@
 //! mid-write never leaves half a file behind.
 
 use std::fs;
-use std::io;
+use std::io::{self, Write};
 use std::path::Path;
 
 use serde::de::DeserializeOwned;
@@ -22,9 +22,12 @@ pub fn read_json<T: DeserializeOwned>(path: &Path) -> Option<T> {
     }
 }
 
-/// Writes the JSON beside the file first, then swaps it in.
+/// Writes the JSON beside the file, makes sure it is on disk, then swaps it in.
 pub fn write_json<T: Serialize>(path: &Path, value: &T) -> io::Result<()> {
     let temporary = path.with_extension("json.tmp");
-    fs::write(&temporary, serde_json::to_vec_pretty(value)?)?;
+    let mut file = fs::File::create(&temporary)?;
+    file.write_all(&serde_json::to_vec_pretty(value)?)?;
+    file.sync_all()?;
+    drop(file);
     fs::rename(&temporary, path)
 }

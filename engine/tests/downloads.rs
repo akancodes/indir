@@ -1,6 +1,7 @@
 //! Downloads from a small local server that can be slow, forget ranges, cut
 //! connections or change the file, each checked byte for byte.
 
+use std::collections::HashMap;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering::SeqCst};
 use std::sync::{Arc, Mutex};
@@ -39,6 +40,9 @@ struct Server {
     streams: Arc<Mutex<(usize, usize)>>,
     /// Answers 429 Too Many Requests to any request while this many are already sending.
     busy_over: Option<usize>,
+    /// Like GitHub's release downloads: `…/redirect/<name>` sends each request to
+    /// a new `…/signed/<n>/<name>`, and each of those works for two requests only.
+    signed: Arc<Mutex<(u64, HashMap<u64, u32>)>>,
     disposition: Option<String>,
     cut: Arc<AtomicBool>,
     sent: Arc<AtomicU64>,
@@ -60,6 +64,7 @@ impl Server {
             fast_slots: None,
             streams: Arc::default(),
             busy_over: None,
+            signed: Arc::default(),
             disposition: None,
             cut: Arc::default(),
             sent: Arc::default(),
@@ -82,20 +87,42 @@ async fn serve(Shared(server): Shared<Server>, UrlPath(path): UrlPath<String>, h
     if path.ends_with("missing") {
         return Response::builder().status(404).body(Body::empty()).unwrap();
     }
+    if path.contains("/redirect/") {
+        let token = {
+            let mut signed = server.signed.lock().unwrap();
+            signed.0 += 1;
+            signed.0
+        };
+        let to = format!("/{}", path.replace("/redirect/", &format!("/signed/{token}/")));
+        return Response::builder().status(302).header(header::LOCATION, to).body(Body::empty()).unwrap();
+    }
+    if let Some((_, rest)) = path.split_once("/signed/") {
+        let token: u64 = rest.split('/').next().unwrap().parse().unwrap();
+        let mut signed = server.signed.lock().unwrap();
+        let uses = signed.1.entry(token).or_default();
+        *uses += 1;
+        if *uses > 2 {
+            return Response::builder().status(403).body(Body::empty()).unwrap();
+        }
+    }
     if server.busy_over.is_some_and(|limit| server.streams.lock().unwrap().0 >= limit) {
         return Response::builder().status(429).body(Body::empty()).unwrap();
     }
     let (data, etag) = server.file.lock().unwrap().clone();
     let total = data.len() as u64;
-    let mut response = Response::builder().header(header::ETAG, etag);
+    let mut response = Response::builder().header(header::ETAG, &etag);
     if server.ranges {
         response = response.header(header::ACCEPT_RANGES, "bytes");
     }
     if let Some(disposition) = &server.disposition {
         response = response.header(header::CONTENT_DISPOSITION, disposition);
     }
-    let asked =
-        headers.get(header::RANGE).filter(|_| server.ranges).map(|value| parse_range(value.to_str().unwrap(), total));
+    // If-Range: the range only while the file is still the one the client means.
+    let same_file = headers.get(header::IF_RANGE).is_none_or(|validator| validator.to_str().unwrap() == etag);
+    let asked = headers
+        .get(header::RANGE)
+        .filter(|_| server.ranges && same_file)
+        .map(|value| parse_range(value.to_str().unwrap(), total));
     let (start, end) = match asked {
         None => {
             response = response.status(200);
@@ -224,27 +251,27 @@ async fn run(transfer: &Arc<Transfer>, connections: usize) -> Outcome {
     transfer.run(&client("indir-tests"), connections, &CancellationToken::new()).await
 }
 
-/// Runs a download in the background and pauses it once part of the file is on disk.
+/// Runs a download in the background and pauses it once bytes are flowing.
 async fn run_then_pause(transfer: &Arc<Transfer>) -> Outcome {
     let cancel = CancellationToken::new();
     let task = {
         let (transfer, cancel) = (transfer.clone(), cancel.clone());
         tokio::spawn(async move { transfer.run(&client("indir-tests"), 4, &cancel).await })
     };
-    until_on_disk(transfer).await;
+    until(|| transfer.progress().received > 0).await;
     cancel.cancel();
     task.await.unwrap()
 }
 
-/// Waits until some of the file has reached the disk.
-async fn until_on_disk(transfer: &Transfer) {
-    for _ in 0..500 {
-        if done_bytes(&transfer.state()) > 0 {
+/// Waits up to 10 seconds for `condition`.
+async fn until(condition: impl Fn() -> bool) {
+    for _ in 0..1000 {
+        if condition() {
             return;
         }
         tokio::time::sleep(Duration::from_millis(10)).await;
     }
-    panic!("nothing reached the disk in 5 seconds");
+    panic!("waited 10 seconds for something that didn't happen");
 }
 
 fn done_bytes(state: &State) -> u64 {
@@ -316,8 +343,9 @@ async fn pauses_and_carries_on_after_a_restart() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn carries_on_after_a_crash() {
-    let data = sample(4 << 20, 5);
-    let server = Server { chunk: 16 << 10, delay: Duration::from_millis(10), ..Server::new(&data) };
+    // Slow enough that a sync happens long before the end.
+    let data = sample(6 << 20, 5);
+    let server = Server { chunk: 16 << 10, delay: Duration::from_millis(40), ..Server::new(&data) };
     let url = server.start("sample.bin").await;
     let dir = tempfile::tempdir().unwrap();
     let transfer = new_transfer(&url, dir.path());
@@ -325,8 +353,9 @@ async fn carries_on_after_a_crash() {
         let transfer = transfer.clone();
         tokio::spawn(async move { run(&transfer, 4).await })
     };
-    until_on_disk(&transfer).await;
-    // The app saves the state now and then, and may die right after.
+    // The app saves the state now and then, and may die right after. What the
+    // state counts must already be on disk.
+    until(|| done_bytes(&transfer.state()) > 0).await;
     let saved = transfer.state();
     task.abort();
     let _ = task.await;
@@ -439,6 +468,42 @@ async fn starts_over_when_the_file_changed() {
     let again = Arc::new(Transfer::new(transfer.state()));
     assert_eq!(run(&again, 4).await, Outcome::Done(dir.path().join("sample.bin")));
     assert!(std::fs::read(dir.path().join("sample.bin")).unwrap() == changed);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn never_mixes_two_versions_of_a_file() {
+    // The first part is slow, so the others take it over after the file changed.
+    let data = sample(8 << 20, 17);
+    let server = Server { chunk: 64 << 10, delay: Duration::from_millis(20), slow_start: 10, ..Server::new(&data) };
+    let url = server.start("sample.bin").await;
+    let dir = tempfile::tempdir().unwrap();
+    let transfer = new_transfer(&url, dir.path());
+    let task = {
+        let transfer = transfer.clone();
+        tokio::spawn(async move { run(&transfer, 4).await })
+    };
+    until(|| transfer.progress().received > 0).await;
+    let changed = sample(8 << 20, 18);
+    *server.file.lock().unwrap() = (Arc::new(changed.clone()), "\"v2\"".into());
+    let Outcome::Failed(why) = task.await.unwrap() else { panic!("a file that changed midway can't finish") };
+    assert!(why.contains("changed"), "{why}");
+    // Trying again starts over, with the new file only.
+    let again = Arc::new(Transfer::new(transfer.state()));
+    assert_eq!(run(&again, 4).await, Outcome::Done(dir.path().join("sample.bin")));
+    assert!(std::fs::read(dir.path().join("sample.bin")).unwrap() == changed);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn asks_the_link_again_when_its_signed_address_expires() {
+    let data = sample(4 << 20, 19);
+    let server = Server::new(&data);
+    let url = server.start("redirect/sample.bin").await;
+    let dir = tempfile::tempdir().unwrap();
+    let transfer = new_transfer(&url, dir.path());
+    assert_eq!(run(&transfer, 4).await, Outcome::Done(dir.path().join("sample.bin")));
+    assert!(std::fs::read(dir.path().join("sample.bin")).unwrap() == data);
+    // Each signed address works twice, so the link had to be asked again.
+    assert!(server.signed.lock().unwrap().0 > 1);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]

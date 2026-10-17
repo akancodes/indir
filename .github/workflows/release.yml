@@ -81,18 +81,34 @@ jobs:
           # The same names in every release, so the README can link to
           # releases/latest/download/<name>.
           releaseAssetNamePattern: ${{ matrix.names }}
-          includeUpdaterJson: false
+          uploadUpdaterJson: false
           retryAttempts: 1
+      # tauri-action always packs the .app as well; Mac users need only the disk image.
+      - name: Only the disk image for Macs
+        if: runner.os == 'macOS'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE: ${{ needs.draft.outputs.id }}
+        run: |
+          for asset in $(gh api "repos/$GITHUB_REPOSITORY/releases/$RELEASE/assets" --jq '.[] | select(.name | endswith(".app.tar.gz")) | .id'); do
+            gh api -X DELETE "repos/$GITHUB_REPOSITORY/releases/assets/$asset"
+          done
       - name: Portable Windows app
         if: runner.os == 'Windows'
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE: ${{ needs.draft.outputs.id }}
         run: |
-          cp target/release/indir.exe indir-windows-portable.exe
+          name=indir-windows-portable.exe
+          cp target/release/indir.exe "$name"
+          # A re-run job replaces the copy it uploaded the first time.
+          for asset in $(gh api "repos/$GITHUB_REPOSITORY/releases/$RELEASE/assets" --jq ".[] | select(.name == \"$name\") | .id"); do
+            gh api -X DELETE "repos/$GITHUB_REPOSITORY/releases/assets/$asset"
+          done
           gh api --method POST -H "Content-Type: application/octet-stream" \
-            "https://uploads.github.com/repos/$GITHUB_REPOSITORY/releases/${{ needs.draft.outputs.id }}/assets?name=indir-windows-portable.exe" \
-            --input indir-windows-portable.exe --silent
+            "https://uploads.github.com/repos/$GITHUB_REPOSITORY/releases/$RELEASE/assets?name=$name" \
+            --input "$name" --silent
 
   publish:
     needs: [draft, build]

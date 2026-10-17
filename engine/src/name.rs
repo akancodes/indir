@@ -41,13 +41,22 @@ fn url_name(url: &Url) -> String {
 /// too long.
 pub fn sanitize(name: &str) -> String {
     let name = name.rsplit(['/', '\\']).next().unwrap_or_default();
-    let cleaned: String =
-        name.chars().map(|c| if c.is_control() || r#"<>:"|?*"#.contains(c) { '_' } else { c }).collect();
+    let cleaned: String = name
+        .chars()
+        .filter(|&c| !is_invisible(c))
+        .map(|c| if c.is_control() || r#"<>:"|?*"#.contains(c) { '_' } else { c })
+        .collect();
     let mut name = cleaned.trim().trim_end_matches(['.', ' ']).to_string();
     if is_device_name(&name) {
         name.insert(0, '_');
     }
     shorten(name, MAX_NAME)
+}
+
+/// Characters that change how a name looks without showing themselves: the
+/// bidi controls would let "invoice\u{202E}fdp.exe" pass for "invoiceexe.pdf".
+fn is_invisible(c: char) -> bool {
+    matches!(c, '\u{061C}' | '\u{200B}'..='\u{200F}' | '\u{202A}'..='\u{202E}' | '\u{2060}'..='\u{2069}' | '\u{FEFF}')
 }
 
 /// "report.pdf" → "report (2).pdf", "backup.tar.gz" → "backup (2).tar.gz".
@@ -271,6 +280,13 @@ mod tests {
         assert_eq!(sanitize("console.txt"), "console.txt");
         assert_eq!(sanitize("tab\there"), "tab_here");
         assert_eq!(sanitize(".."), "");
+    }
+
+    #[test]
+    fn drops_characters_that_disguise_a_name() {
+        assert_eq!(sanitize("invoice\u{202E}fdp.exe"), "invoicefdp.exe");
+        assert_eq!(sanitize("\u{2067}photo\u{2069}.jpg\u{200F}"), "photo.jpg");
+        assert_eq!(sanitize("\u{FEFF}notes.txt"), "notes.txt");
     }
 
     #[test]

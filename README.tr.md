@@ -40,8 +40,10 @@ yapıştıracağınız bir alan ve iki ayar var, o kadar.
   "429 Too Many Requests" ile geri çevirir. indir bunu fark eder, bir süre tek bağlantıyla dener ve hangisi
   hızlıysa onda kalır. Amacı hiçbir zaman tarayıcınızdan yavaş olmamak.
 - **Duraklatır ve devam eder.** Bir indirmeyi durdurup sonra devam ettirebilirsiniz; indir'i kapatsanız ya da
-  bilgisayarı yeniden başlatsanız bile. Bu arada sunucudaki dosya değiştiyse indir bunu anlar ve baştan başlar.
-- **Kopan bağlantıya takılmaz.** Kopan ya da takılan bir bağlantı tam kaldığı yerden yeniden açılır.
+  bilgisayarı yeniden başlatsanız bile. Sunucudaki dosya değişirse, indirme sürerken de olsa arada da olsa, indir
+  bunu anlar ve iki sürümü karıştırmak yerine baştan başlar.
+- **Kopan bağlantıya takılmaz.** Kopan ya da takılan bir bağlantı tam kaldığı yerden yeniden açılır. GitHub'ın
+  sürüm indirmeleri gibi, süresi dolan imzalı bir adrese götüren linklere yeniden sorulur.
 - **Ne yaptığını gösterir.** Her indirmenin çubuğu dosyanın tamamıdır; her parça kendi başlangıcından dolar.
   Dosya tamamlanınca parçalar birleşip tek bir çubuk olur.
 - **Ayağınıza dolanmaz.** Açık ve koyu tema sisteminizi izler. İlerleme görev çubuğundaki düğmede ya da
@@ -84,8 +86,9 @@ bağlantı açabileceği var: 1, 2, 4, 8 ya da 16. **Kısayollar:** Ctrl+L (Mac'
    sunucunun dosyanın istenen her parçasını gönderebildiğini ve dosyanın ne kadar büyük olduğunu söyler.
    Gönderemeyen bir sunucudan dosya tek, sıradan bir bağlantıyla alınır.
 2. **Dosya bölünür.** Her bağlantıya bir tane düşecek, hiçbiri 1 MB'tan küçük olmayacak şekilde eşit parçalara.
-   Her bağlantı kendi parçasını bir HTTP `Range` isteğiyle ister ve indirmenin sonunda duracağı yerin yanındaki
-   `.indir` dosyasında doğrudan kendi yerine yazar. Bağlantılar bilerek HTTP/1.1 konuşur: HTTP/2 hepsini tek bir
+   Her bağlantı kendi parçasını bir HTTP `Range` isteğiyle ister; sunucuda değişen bir dosya fark edilsin diye
+   isteğe `If-Range` de eklenir. Parça, indirmenin sonunda duracağı yerin yanındaki `.indir` dosyasında doğrudan
+   kendi yerine yazılır. Bağlantılar bilerek HTTP/1.1 konuşur: HTTP/2 hepsini tek bir
    TCP bağlantısından taşırdı, indirme yöneticisinin kaçındığı şey de tam olarak bu.
 3. **Boşa çıkan bağlantılar diğerlerine yardım eder.** İşini bitiren bir bağlantı, hâlâ inmekte olan en büyük
    parçanın ikinci yarısını devralır. 5 saniyedir hiçbir şey göndermeyen ya da başka bir bağlantının hızının
@@ -93,8 +96,9 @@ bağlantı açabileceği var: 1, 2, 4, 8 ya da 16. **Kısayollar:** Ctrl+L (Mac'
    fazladan açılan bağlantılara bilerek damla damla gönderir.
 4. **Hız izlenir.** Bağlantılar böyle sürünürse indir birkaç saniyeliğine tek bağlantı dener ve hepsinin
    toplamından iyiyse onda kalır.
-5. **Diske ulaşmayan hiçbir şey sayılmaz.** İlerleme birkaç saniyede bir kaydedilir ve yalnızca diske ulaşmış
-   baytlar sayılır; çökme ya da elektrik kesintisi en fazla birkaç saniyeye mal olur. Her bayt yerine
+5. **Diske ulaşmayan hiçbir şey sayılmaz.** indir iki saniyede bir, yazdıklarını kalıcı olarak diske koyması için
+   sisteme seslenir; kaydettiği ilerleme yalnızca o baytları sayar. Çökme ya da elektrik kesintisi en fazla
+   birkaç saniyeye mal olur. Her bayt yerine
    gelince `.indir` dosyası asıl adını alır. Var olan bir dosyanın üzerine asla yazılmaz: ikinci bir
    `rapor.pdf`, `rapor (1).pdf` olur.
 
@@ -116,6 +120,8 @@ cargo run --release -p indir-engine --example get -- https://example.com/buyuk.i
 - **Nerede ne tutulur.** İndirme listesi ve ayarlar, uygulama verisi klasörünüzdeki iki küçük JSON dosyasıdır:
   Windows'ta `%APPDATA%\dev.akan.indir`, macOS'ta `~/Library/Application Support/dev.akan.indir`, Linux'ta
   `~/.local/share/dev.akan.indir`.
+- **Adlar temizlenir.** Sunucudan gelen bir addan Windows, macOS ya da Linux'un kaldıramayacağı karakterler ve
+  `rapor.exe`'yi PDF gibi gösterebilecek görünmez karakterler çıkarılır.
 - **Bir indirmeyi kaldırmak** onu listeden çıkarır. Bitmiş dosya olduğu yerde kalır; bitmemiş birinin `.indir`
   dosyası silinir.
 
