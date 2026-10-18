@@ -7,14 +7,17 @@
 //! end. Progress is kept per part, so a paused, failed or interrupted download
 //! carries on where each part stopped.
 //!
+//! Every download run with the same [`Limiter`] shares its speed limit.
+//!
 //! ```no_run
 //! use std::sync::Arc;
-//! use indir_engine::{client, CancellationToken, Outcome, State, Transfer};
+//! use indir_engine::{client, CancellationToken, Limiter, Outcome, State, Transfer};
 //!
 //! # async fn example() {
 //! let state = State::new("https://example.com/big.iso".into(), "/home/me/Downloads".into());
 //! let transfer = Arc::new(Transfer::new(state));
-//! match transfer.run(&client("my-app/1.0"), 8, &CancellationToken::new()).await {
+//! let limiter = Limiter::new();
+//! match transfer.run(&client("my-app/1.0"), 8, &limiter, &CancellationToken::new()).await {
 //!     Outcome::Done(path) => println!("saved to {}", path.display()),
 //!     Outcome::Paused => println!("paused: keep transfer.state() to carry on later"),
 //!     Outcome::Failed(why) => println!("failed: {why}"),
@@ -22,6 +25,7 @@
 //! # }
 //! ```
 
+mod limit;
 mod name;
 mod probe;
 mod steering;
@@ -29,6 +33,7 @@ mod transfer;
 
 use std::time::Duration;
 
+pub use limit::Limiter;
 pub use name::{link_name, sanitize};
 pub use reqwest::Client;
 pub use tokio_util::sync::CancellationToken;

@@ -1,5 +1,21 @@
 # Changes
 
+## v0.2.0 (2026-10-18)
+
+- **When done:** put the computer to sleep, shut it down or quit indir once nothing is left to download. A
+  minute's countdown comes first, and you can cancel it; it says if a download stopped with a problem. On laptops
+  with modern standby, sleep asks Windows for standby the way its Start menu does.
+- While anything downloads, the computer doesn't fall asleep by itself. The screen may still turn off.
+- **Downloads at once:** 3 to begin with; the others wait their turn and start by themselves. *Start now* lets one
+  skip the line.
+- **Speed limit** for every download together, from 1 to 20 MB a second. It applies at once, to running downloads
+  too, and a connection waiting for its share is never taken for a stuck one.
+- *Pause all* and *Resume all* in the status bar.
+- A notification when a download finishes or stops, if indir isn't in front.
+- A link copied in the browser is already in the field when you switch to indir.
+- Right-click a download to copy its link, download it again, or show it in its folder.
+- After a restart, nothing starts by itself: what was downloading or waiting is paused.
+
 ## v0.1.0 (2026-10-17)
 
 The first release.

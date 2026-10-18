@@ -14,7 +14,7 @@ use axum::response::Response;
 use axum::routing::get;
 use axum::Router;
 use futures_util::stream;
-use indir_engine::{client, CancellationToken, Outcome, State, Transfer};
+use indir_engine::{client, CancellationToken, Limiter, Outcome, State, Transfer};
 
 #[derive(Clone)]
 struct Server {
@@ -248,7 +248,7 @@ fn new_transfer(url: &str, dir: &Path) -> Arc<Transfer> {
 }
 
 async fn run(transfer: &Arc<Transfer>, connections: usize) -> Outcome {
-    transfer.run(&client("indir-tests"), connections, &CancellationToken::new()).await
+    transfer.run(&client("indir-tests"), connections, &Limiter::new(), &CancellationToken::new()).await
 }
 
 /// Runs a download in the background and pauses it once bytes are flowing.
@@ -256,7 +256,7 @@ async fn run_then_pause(transfer: &Arc<Transfer>) -> Outcome {
     let cancel = CancellationToken::new();
     let task = {
         let (transfer, cancel) = (transfer.clone(), cancel.clone());
-        tokio::spawn(async move { transfer.run(&client("indir-tests"), 4, &cancel).await })
+        tokio::spawn(async move { transfer.run(&client("indir-tests"), 4, &Limiter::new(), &cancel).await })
     };
     until(|| transfer.progress().received > 0).await;
     cancel.cancel();
@@ -567,4 +567,65 @@ async fn never_overwrites_a_file_that_is_already_there() {
     let transfer = new_transfer(&url, dir.path());
     assert_eq!(run(&transfer, 4).await, Outcome::Done(dir.path().join("notes (1).txt")));
     assert_eq!(std::fs::read_to_string(dir.path().join("notes.txt")).unwrap(), "mine");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn keeps_to_a_speed_limit() {
+    let data = sample(3 << 20, 20);
+    let server = Server::new(&data);
+    let url = server.start("sample.bin").await;
+    let dir = tempfile::tempdir().unwrap();
+    let transfer = new_transfer(&url, dir.path());
+    let limiter = Limiter::new();
+    limiter.set(Some(2_000_000));
+    let started = Instant::now();
+    let outcome = transfer.run(&client("indir-tests"), 4, &limiter, &CancellationToken::new()).await;
+    assert_eq!(outcome, Outcome::Done(dir.path().join("sample.bin")));
+    assert!(std::fs::read(dir.path().join("sample.bin")).unwrap() == data);
+    // 3.1 MB at 2 MB a second, less the quarter second it may run ahead.
+    let elapsed = started.elapsed();
+    assert!(elapsed >= Duration::from_millis(1250) && elapsed < Duration::from_secs(5), "{elapsed:?}");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn downloads_share_one_speed_limit() {
+    let data = sample(2 << 20, 21);
+    let server = Server::new(&data);
+    let url = server.start("sample.bin").await;
+    let dir = tempfile::tempdir().unwrap();
+    let (first, second) = (new_transfer(&url, dir.path()), new_transfer(&url, dir.path()));
+    let limiter = Limiter::new();
+    limiter.set(Some(2_000_000));
+    let started = Instant::now();
+    let (client, never) = (client("indir-tests"), CancellationToken::new());
+    let (a, b) = tokio::join!(first.run(&client, 4, &limiter, &never), second.run(&client, 4, &limiter, &never));
+    assert!(matches!((a, b), (Outcome::Done(_), Outcome::Done(_))));
+    // 4.2 MB between them at 2 MB a second: each alone would take half as long.
+    let elapsed = started.elapsed();
+    assert!(elapsed >= Duration::from_millis(1800) && elapsed < Duration::from_secs(6), "{elapsed:?}");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn follows_a_new_speed_limit_at_once() {
+    let data = sample(4 << 20, 22);
+    let server = Server::new(&data);
+    let url = server.start("sample.bin").await;
+    let dir = tempfile::tempdir().unwrap();
+    let transfer = new_transfer(&url, dir.path());
+    let limiter = Limiter::new();
+    // 20 seconds' worth at this limit.
+    limiter.set(Some(200_000));
+    let started = Instant::now();
+    let task = {
+        let (transfer, limiter) = (transfer.clone(), limiter.clone());
+        tokio::spawn(async move { transfer.run(&client("indir-tests"), 4, &limiter, &CancellationToken::new()).await })
+    };
+    until(|| transfer.progress().received > 0).await;
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    let received = transfer.progress().received;
+    assert!(received < 1 << 20, "{received} bytes in half a second at 200 KB a second");
+    limiter.set(None);
+    assert_eq!(task.await.unwrap(), Outcome::Done(dir.path().join("sample.bin")));
+    assert!(std::fs::read(dir.path().join("sample.bin")).unwrap() == data);
+    assert!(started.elapsed() < Duration::from_secs(5), "{:?}", started.elapsed());
 }

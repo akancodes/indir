@@ -1,6 +1,6 @@
 [package]
 name = "indir-engine"
-version = "0.1.0"
+version = "0.2.0"
 description = "indir's download engine: one file over many connections, with pause and resume"
 license = "MIT"
 repository = "https://github.com/akancodes/indir"
@@ -13,7 +13,7 @@ futures-util = "0.3"
 percent-encoding = "2"
 reqwest = { version = "0.13", default-features = false, features = ["rustls", "stream", "system-proxy"] }
 serde = { version = "1", features = ["derive"] }
-tokio = { version = "1", features = ["fs", "io-util", "macros", "rt", "time"] }
+tokio = { version = "1", features = ["fs", "io-util", "macros", "rt", "sync", "time"] }
 tokio-util = "0.7"
 url = "2"
 
@@ -23,4 +23,4 @@ windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_
 [dev-dependencies]
 axum = "0.8"
 tempfile = "3"
-tokio = { version = "1", features = ["full"] }
+tokio = { version = "1", features = ["full", "test-util"] }

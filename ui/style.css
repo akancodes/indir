@@ -145,6 +145,22 @@ svg {
   outline: none;
 }
 
+/* A link that came from the clipboard, waiting for Enter. */
+.tag {
+  flex-shrink: 0;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--bytes-ring);
+  color: var(--bytes);
+  font-size: 11.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.tag[hidden] {
+  display: none;
+}
+
 .primary {
   flex-shrink: 0;
   height: 44px;
@@ -329,7 +345,8 @@ svg {
   to { transform: translateX(340%); }
 }
 
-.row[data-status="paused"] .fill {
+.row[data-status="paused"] .fill,
+.row[data-status="queued"] .fill {
   background: var(--paused);
 }
 
@@ -508,6 +525,37 @@ kbd {
   text-decoration: underline;
 }
 
+/* What happens once everything is done. Loud once it's chosen. */
+.when-done {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+
+.when-done svg {
+  width: 14px;
+  height: 14px;
+  stroke-width: 1.9;
+}
+
+.when-done.armed {
+  padding: 3px 10px 3px 8px;
+  border: 1px solid var(--bytes);
+  border-radius: 999px;
+  color: var(--bytes);
+  font-weight: 600;
+}
+
+.when-done.armed:hover {
+  background: var(--bytes-ring);
+  color: var(--bytes);
+}
+
+.when-done[hidden] {
+  display: none;
+}
+
 .pill {
   padding: 3px 10px;
   border: 1px solid var(--bytes);
@@ -565,6 +613,8 @@ kbd {
 
 .sheet-card {
   width: min(440px, 100%);
+  max-height: 100%;
+  overflow-y: auto;
   padding: 18px 20px 16px;
   border: 1px solid var(--line);
   border-radius: 16px;
@@ -585,7 +635,7 @@ kbd {
 }
 
 .sheet-card section {
-  padding: 12px 0;
+  padding: 9px 0;
 }
 
 .sheet-card h3 {
@@ -650,8 +700,87 @@ kbd {
   color: #fff;
 }
 
+.segmented.small button {
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+/* The minute before the computer sleeps or shuts down */
+
+.countdown {
+  width: min(360px, 100%);
+  padding: 26px 24px 20px;
+  text-align: center;
+}
+
+.ring {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 112px;
+  height: 112px;
+  margin: 0 auto 14px;
+}
+
+.ring svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+  stroke-width: 5;
+}
+
+.ring-lane {
+  stroke: var(--lane);
+}
+
+.ring-left {
+  stroke: var(--bytes);
+  transition: stroke-dashoffset 1s linear;
+}
+
+.ring span {
+  font: 700 34px/1 var(--mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+.countdown h2 {
+  margin: 0;
+  font-size: 20px;
+  letter-spacing: -0.01em;
+}
+
+.countdown p {
+  margin: 6px 0 20px;
+  color: var(--muted);
+}
+
+.countdown-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.countdown-actions button {
+  flex: 1;
+}
+
+.secondary {
+  height: 44px;
+  padding: 0 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  font-weight: 600;
+}
+
+.secondary:hover {
+  border-color: var(--muted);
+}
+
 .hint {
-  margin: 8px 0 0;
+  margin: 6px 0 0;
   color: var(--muted);
   font-size: 12.5px;
 }
@@ -665,6 +794,75 @@ kbd {
   border-top: 1px solid var(--line);
   color: var(--muted);
   font-size: 12.5px;
+}
+
+/* A download's menu, and what happens once everything is done */
+
+.menu {
+  position: fixed;
+  z-index: 2;
+  min-width: 190px;
+  padding: 5px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
+  animation: fade 0.1s ease;
+}
+
+.menu[hidden] {
+  display: none;
+}
+
+.menu:focus {
+  outline: none;
+}
+
+.menu-title {
+  padding: 5px 10px 4px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.menu-line {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--line);
+}
+
+.menu-item {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  height: 30px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  font-size: 13px;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.menu-item:hover,
+.menu-item:focus-visible {
+  outline: none;
+  background: var(--lane);
+}
+
+/* The choices make room for their mark, ticked or not. */
+.menu-item[role="menuitemradio"]::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  margin-right: 10px;
+  border: 1.5px solid var(--muted);
+  border-radius: 50%;
+}
+
+.menu-item[aria-checked="true"]::before {
+  border-color: var(--bytes);
+  background: var(--bytes);
 }
 
 /* A link dragged over the window */
