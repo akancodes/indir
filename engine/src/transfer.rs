@@ -16,6 +16,7 @@ use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
 use url::Url;
 
+use crate::limit::Limiter;
 use crate::name;
 use crate::probe::{self, Probe};
 use crate::steering::{Decision, Steering, CRAWLING};
@@ -30,6 +31,9 @@ const MIN_PART: u64 = 1 << 20;
 const MIN_SPLIT: u64 = 256 << 10;
 /// Bytes gathered in memory before each write.
 const WRITE_SIZE: usize = 256 << 10;
+/// The most bytes a connection asks the speed limit for at once, so one
+/// waiting its turn never waits long.
+const LIMIT_SLICE: usize = 64 << 10;
 /// How long a connection may go quiet before it is opened again.
 const STALL: Duration = Duration::from_secs(30);
 /// How long a connection may send nothing before a free connection takes
@@ -151,6 +155,8 @@ struct Inner {
     allowed: usize,
     /// Whether a connection was taken over for crawling along at a trickle.
     crawled: bool,
+    /// Whether a speed limit is set. Connections are slow on purpose then.
+    limited: bool,
 }
 
 struct Live {
@@ -162,11 +168,13 @@ struct Live {
     flowing: Option<(Instant, u64)>,
     /// Cancelled when another connection takes over what's left of the part.
     cut: CancellationToken,
+    /// Waiting for the speed limit to let it go on: held back, not stuck.
+    held: bool,
 }
 
 impl Live {
     fn new(received: u64) -> Self {
-        Self { received, busy: false, heard: Instant::now(), flowing: None, cut: CancellationToken::new() }
+        Self { received, busy: false, heard: Instant::now(), flowing: None, cut: CancellationToken::new(), held: false }
     }
 
     /// Bytes a second since the current request's first bytes, once that is
@@ -228,6 +236,7 @@ impl Transfer {
                 patience: QUIET,
                 allowed: MAX_CONNECTIONS,
                 crawled: false,
+                limited: false,
             }),
         }
     }
@@ -252,10 +261,17 @@ impl Transfer {
         }
     }
 
-    /// Fetches the file over up to `connections` connections, until it is
-    /// done, `cancel` fires (that's [`Outcome::Paused`]) or a problem stops it.
-    pub async fn run(self: &Arc<Self>, client: &Client, connections: usize, cancel: &CancellationToken) -> Outcome {
-        let result = self.fetch(client, connections.clamp(1, MAX_CONNECTIONS), cancel).await;
+    /// Fetches the file over up to `connections` connections, within the
+    /// speed limit of `limiter`, until it is done, `cancel` fires (that's
+    /// [`Outcome::Paused`]) or a problem stops it.
+    pub async fn run(
+        self: &Arc<Self>,
+        client: &Client,
+        connections: usize,
+        limiter: &Limiter,
+        cancel: &CancellationToken,
+    ) -> Outcome {
+        let result = self.fetch(client, connections.clamp(1, MAX_CONNECTIONS), limiter, cancel).await;
         {
             let mut inner = self.lock();
             inner.streaming = false;
@@ -272,6 +288,7 @@ impl Transfer {
         self: &Arc<Self>,
         client: &Client,
         connections: usize,
+        limiter: &Limiter,
         cancel: &CancellationToken,
     ) -> Result<PathBuf, Stop> {
         let link = self.lock().state.url.clone();
@@ -288,9 +305,9 @@ impl Transfer {
         }
         self.prepare(&probe, connections)?;
         if self.lock().state.resumable {
-            self.fetch_parts(client, connections, cancel).await?;
+            self.fetch_parts(client, connections, limiter, cancel).await?;
         } else {
-            self.fetch_whole(client, &probe.url, cancel).await?;
+            self.fetch_whole(client, &probe.url, limiter, cancel).await?;
         }
         self.finish().await
     }
@@ -369,6 +386,7 @@ impl Transfer {
         self: &Arc<Self>,
         client: &Client,
         connections: usize,
+        limiter: &Limiter,
         cancel: &CancellationToken,
     ) -> Result<(), Stop> {
         // A child token, so one connection's failure can stop the others
@@ -378,12 +396,13 @@ impl Transfer {
             let mut inner = self.lock();
             inner.allowed = connections;
             inner.crawled = false;
+            inner.limited = limiter.rate().is_some();
             Steering::new(connections, inner.live.iter().map(|l| l.received).sum())
         };
         let mut workers = JoinSet::new();
         for _ in 0..connections {
-            let (me, client, stop) = (Arc::clone(self), client.clone(), stop.clone());
-            workers.spawn(async move { me.connection(&client, &stop).await });
+            let (me, client, limiter, stop) = (Arc::clone(self), client.clone(), limiter.clone(), stop.clone());
+            workers.spawn(async move { me.connection(&client, &limiter, &stop).await });
         }
         let mut ticks = tokio::time::interval(STEER_EVERY);
         let mut last_sync = Instant::now();
@@ -403,6 +422,7 @@ impl Transfer {
                     }
                 }
                 _ = ticks.tick() => {
+                    self.follow_limit(limiter.rate().is_some());
                     self.steer(&mut steering);
                     // One sync at a time, in the background.
                     if syncing.as_ref().is_none_or(|sync| sync.is_finished()) && last_sync.elapsed() >= SYNC_EVERY {
@@ -432,14 +452,14 @@ impl Transfer {
     }
 
     /// One connection: takes parts until every part is on its way or done.
-    async fn connection(&self, client: &Client, stop: &CancellationToken) -> Result<(), Stop> {
+    async fn connection(&self, client: &Client, limiter: &Limiter, stop: &CancellationToken) -> Result<(), Stop> {
         // How fast this connection fetched its last part, to compare with the others.
         let mut speed = None;
         loop {
             match self.take(speed) {
                 Take::Part(i) => {
                     let (started, before) = (Instant::now(), self.lock().live[i].received);
-                    let ended = self.fetch_part(client, i, stop).await;
+                    let ended = self.fetch_part(client, i, limiter, stop).await;
                     // Stepping aside already let go of the part, under the lock;
                     // another connection may have it by now.
                     if let Ok(Ended::StepAside) = ended {
@@ -474,7 +494,7 @@ impl Transfer {
     /// its way.
     fn take(&self, speed: Option<f64>) -> Take {
         let mut inner = self.lock();
-        let Inner { state, live, patience, allowed, crawled, .. } = &mut *inner;
+        let Inner { state, live, patience, allowed, crawled, limited, .. } = &mut *inner;
         // Room for one more connection. Taking over a stuck part needs none:
         // the stuck connection stops.
         let room = live.iter().filter(|l| l.busy).count() < *allowed;
@@ -483,6 +503,7 @@ impl Transfer {
             live[i].busy = true;
             live[i].heard = Instant::now();
             live[i].cut = CancellationToken::new();
+            live[i].held = false;
             return Take::Part(i);
         }
         let running: Vec<(usize, u64)> = (0..live.len())
@@ -497,8 +518,16 @@ impl Transfer {
         let stuck = running
             .iter()
             .filter_map(|&(i, left)| {
+                if live[i].held {
+                    return None;
+                }
                 if live[i].heard.elapsed() >= *patience {
                     return Some((i, left, f64::INFINITY));
+                }
+                // Under a speed limit every connection is slow on purpose, and
+                // taking one over would fetch no sooner.
+                if *limited {
+                    return None;
                 }
                 let (mine, theirs) = (speed?, live[i].speed()?);
                 let their_time = left as f64 / theirs.max(1.0);
@@ -544,6 +573,18 @@ impl Transfer {
         }
     }
 
+    /// Notes whether a speed limit is set. Speeds measured under a limit say
+    /// nothing about the connections once it is lifted, so they are measured
+    /// afresh: otherwise the first to go fast would take the others for
+    /// crawling and close them.
+    fn follow_limit(&self, limited: bool) {
+        let mut inner = self.lock();
+        if inner.limited && !limited {
+            inner.live.iter_mut().for_each(|l| l.flowing = None);
+        }
+        inner.limited = limited;
+    }
+
     /// Makes what has been written durable, then lets `state()` count it.
     /// The copy is taken first, so everything it counts was written before
     /// the sync began, and is on disk once it returns.
@@ -582,12 +623,18 @@ impl Transfer {
 
     /// Fetches what's left of part `i`, opening the connection again after
     /// network trouble, waiting longer each time.
-    async fn fetch_part(&self, client: &Client, i: usize, stop: &CancellationToken) -> Result<Ended, Stop> {
+    async fn fetch_part(
+        &self,
+        client: &Client,
+        i: usize,
+        limiter: &Limiter,
+        stop: &CancellationToken,
+    ) -> Result<Ended, Stop> {
         let cut = self.lock().live[i].cut.clone();
         let mut tries = 0;
         loop {
             let before = self.lock().live[i].received;
-            match self.fetch_range(client, i, stop, &cut).await {
+            match self.fetch_range(client, i, limiter, stop, &cut).await {
                 Err(Stop::Busy(_)) if self.step_aside(i) => return Ok(Ended::StepAside),
                 Err(Stop::Retry(why) | Stop::Busy(why)) => {
                     if self.lock().live[i].received > before {
@@ -614,6 +661,7 @@ impl Transfer {
         &self,
         client: &Client,
         i: usize,
+        limiter: &Limiter,
         stop: &CancellationToken,
         cut: &CancellationToken,
     ) -> Result<Ended, Stop> {
@@ -680,7 +728,7 @@ impl Transfer {
             .map_err(|e| file_failure("open the file", e))?;
         let mut pending = Vec::with_capacity(WRITE_SIZE);
         let mut body = response.bytes_stream();
-        let result = loop {
+        let result = 'reading: loop {
             let next = tokio::select! {
                 _ = stop.cancelled() => break Err(Stop::Cancelled),
                 _ = cut.cancelled() => break Ok(Ended::Cut),
@@ -692,20 +740,50 @@ impl Transfer {
                 Ok(None) => break Err(Stop::Retry("The connection closed before its part was complete".into())),
                 Err(_) => break Err(Stop::Retry("The server stopped sending data".into())),
             };
-            let (take, complete) = self.accept(i, chunk.len());
-            pending.extend_from_slice(&chunk[..take]);
-            if complete {
-                break Ok(Ended::Complete);
-            }
-            if pending.len() >= WRITE_SIZE {
-                if let Err(e) = self.write(&mut file, &mut pending, i).await {
-                    break Err(e);
+            for slice in chunk.chunks(LIMIT_SLICE) {
+                if let Some(stopped) = self.wait_turn(i, slice.len(), limiter, stop, cut).await {
+                    break 'reading stopped;
+                }
+                let (take, complete) = self.accept(i, slice.len());
+                pending.extend_from_slice(&slice[..take]);
+                if complete {
+                    break 'reading Ok(Ended::Complete);
+                }
+                if pending.len() >= WRITE_SIZE {
+                    if let Err(e) = self.write(&mut file, &mut pending, i).await {
+                        break 'reading Err(e);
+                    }
                 }
             }
         };
         // Keep whatever arrived, however the request ended.
         self.write(&mut file, &mut pending, i).await?;
         result
+    }
+
+    /// Waits until the speed limit lets part `i` keep `len` more bytes, if
+    /// there is a limit. Meanwhile the part counts as held back, not quiet.
+    /// Returns how the part's request ends if it is stopped or cut first.
+    async fn wait_turn(
+        &self,
+        i: usize,
+        len: usize,
+        limiter: &Limiter,
+        stop: &CancellationToken,
+        cut: &CancellationToken,
+    ) -> Option<Result<Ended, Stop>> {
+        limiter.rate()?;
+        self.lock().live[i].held = true;
+        let stopped = tokio::select! {
+            _ = stop.cancelled() => Some(Err(Stop::Cancelled)),
+            _ = cut.cancelled() => Some(Ok(Ended::Cut)),
+            () = limiter.take(len) => None,
+        };
+        let mut inner = self.lock();
+        inner.live[i].held = false;
+        // The quiet that counts is the server's, from here on.
+        inner.live[i].heard = Instant::now();
+        stopped
     }
 
     /// Counts `len` new bytes for part `i`, cut at the part's end (which a
@@ -744,7 +822,13 @@ impl Transfer {
     }
 
     /// A server without ranges sends the file in one go, from the start.
-    async fn fetch_whole(&self, client: &Client, url: &Url, cancel: &CancellationToken) -> Result<(), Stop> {
+    async fn fetch_whole(
+        &self,
+        client: &Client,
+        url: &Url,
+        limiter: &Limiter,
+        cancel: &CancellationToken,
+    ) -> Result<(), Stop> {
         let (path, size) = {
             let inner = self.lock();
             (inner.state.partial_path(), inner.state.size)
@@ -765,18 +849,24 @@ impl Transfer {
         self.lock().streaming = true;
         let mut pending = Vec::with_capacity(WRITE_SIZE);
         let mut body = response.bytes_stream();
-        let result = loop {
+        let result = 'reading: loop {
             let next = tokio::select! {
                 _ = cancel.cancelled() => break Err(Stop::Cancelled),
                 next = tokio::time::timeout(STALL, body.next()) => next,
             };
             match next {
                 Ok(Some(Ok(chunk))) => {
-                    self.lock().streamed += chunk.len() as u64;
-                    pending.extend_from_slice(&chunk);
-                    if pending.len() >= WRITE_SIZE {
-                        if let Err(e) = write_out(&mut file, &mut pending).await {
-                            break Err(e);
+                    for slice in chunk.chunks(LIMIT_SLICE) {
+                        tokio::select! {
+                            _ = cancel.cancelled() => break 'reading Err(Stop::Cancelled),
+                            () = limiter.take(slice.len()) => {}
+                        }
+                        self.lock().streamed += slice.len() as u64;
+                        pending.extend_from_slice(slice);
+                        if pending.len() >= WRITE_SIZE {
+                            if let Err(e) = write_out(&mut file, &mut pending).await {
+                                break 'reading Err(e);
+                            }
                         }
                     }
                 }
@@ -1079,5 +1169,60 @@ mod tests {
         let parts = transfer.lock().state.parts.clone();
         assert_eq!(parts[0].end, 1000);
         assert_eq!(parts[2], Part { start: 1000, end: MIN_PART, done: 0 });
+    }
+
+    #[test]
+    fn a_part_held_back_by_the_speed_limit_is_not_quiet() {
+        let mut state = State::new("https://example.com/f".into(), PathBuf::new());
+        // Too small to split, so a free connection can only take a stuck part over.
+        state.parts =
+            vec![Part { start: 0, end: MIN_SPLIT, done: 0 }, Part { start: MIN_SPLIT, end: 2 * MIN_SPLIT, done: 0 }];
+        let transfer = Transfer::new(state);
+        assert_eq!(transfer.take(None), Take::Part(0));
+        assert_eq!(transfer.take(None), Take::Part(1));
+        transfer.accept(0, 1000);
+        transfer.accept(1, MIN_SPLIT as usize);
+        transfer.lock().live[0].heard -= QUIET;
+        transfer.lock().live[0].held = true;
+        assert_eq!(transfer.take(None), Take::Wait);
+        transfer.lock().live[0].held = false;
+        assert_eq!(transfer.take(None), Take::Part(2));
+    }
+
+    #[test]
+    fn speeds_are_measured_afresh_once_a_limit_is_lifted() {
+        let mut state = State::new("https://example.com/f".into(), PathBuf::new());
+        state.parts = plan(4 * MIN_PART, 2);
+        let transfer = Transfer::new(state);
+        transfer.follow_limit(true);
+        assert_eq!(transfer.take(None), Take::Part(0));
+        assert_eq!(transfer.take(None), Take::Part(1));
+        transfer.accept(1, 2 * MIN_PART as usize);
+        transfer.accept(0, 1000);
+        // Slow all along, under the limit.
+        transfer.lock().live[0].flowing = Some((Instant::now() - Duration::from_secs(60), 0));
+        transfer.follow_limit(false);
+        assert_eq!(transfer.lock().live[0].flowing, None);
+        // A fast connection doesn't take it for crawling: nothing is known about it yet.
+        assert_eq!(transfer.take(Some(10e6)), Take::Part(2));
+        assert!(!transfer.lock().live[0].cut.is_cancelled());
+    }
+
+    #[test]
+    fn under_a_speed_limit_a_slow_part_is_only_split() {
+        let mut state = State::new("https://example.com/f".into(), PathBuf::new());
+        state.parts = plan(4 * MIN_PART, 2);
+        let transfer = Transfer::new(state);
+        transfer.lock().limited = true;
+        assert_eq!(transfer.take(None), Take::Part(0));
+        assert_eq!(transfer.take(None), Take::Part(1));
+        transfer.accept(1, 2 * MIN_PART as usize);
+        transfer.accept(0, 1000);
+        // Slow enough to count as crawling without a limit.
+        transfer.lock().live[0].flowing = Some((Instant::now() - Duration::from_secs(2), 0));
+        assert_eq!(transfer.take(Some(10e6)), Take::Part(2));
+        assert!(!transfer.lock().live[0].cut.is_cancelled());
+        let left = 2 * MIN_PART - 1000;
+        assert_eq!(transfer.lock().state.parts.clone()[0].end, 2 * MIN_PART - left / 2);
     }
 }

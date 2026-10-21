@@ -18,7 +18,7 @@
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshot-dark.png">
-  <img src="docs/screenshot-light.png" alt="indir with two files downloading in parts, one paused and one finished">
+  <img src="docs/screenshot-light.png" alt="indir with two files downloading in parts, one waiting its turn and one finished, set to shut the computer down when they are done">
 </picture>
 
 ## Why indir
@@ -26,7 +26,7 @@
 If you have used Internet Download Manager, this is the same idea with everything else taken out. A browser
 fetches a file over one connection; many servers cap how fast a single connection may go, so a big file crawls.
 indir splits the file into parts and fetches them side by side, then puts them back together. There is one window,
-one field to paste into, and two settings.
+one field to paste into, and a short page of settings.
 
 ## What it does
 
@@ -43,6 +43,17 @@ one field to paste into, and two settings.
   rather than mix two versions.
 - **Shrugs off bad connections.** A dropped or stalled connection is opened again exactly where it stopped. A link
   that leads to a signed address which expires, as GitHub's release downloads do, is simply asked again.
+- **Takes turns.** Paste ten links and three of them download at once; the others wait their turn and start by
+  themselves. *Start now* lets one skip the line, and *Pause all* stops everything.
+- **Leaves room for everyone else.** A speed limit holds every download together to, say, 5 MB a second, so the
+  rest of the house can still watch a film. It applies at once, to downloads already running too.
+- **Sleeps or shuts down when it's done.** Tell indir to put the computer to sleep, shut it down or quit once
+  nothing is left to download. It waits a minute first, in case you're still there and change your mind, and
+  says if a download stopped with a problem. While anything downloads, the computer doesn't fall asleep by
+  itself, though the screen may still turn off.
+- **Says when a file is ready,** with a notification when indir isn't in front.
+- **Picks up a copied link.** Copy a link in your browser and switch to indir: it's already in the field, and
+  Enter is all that's left. Right-click a download to copy its link, download it again or show it in its folder.
 - **Shows its work.** Each download's bar is the whole file, with every part filling in from its own start.
   When the file is complete, the parts close up into one bar.
 - **Stays out of your way.** Light and dark follow your system. The progress also shows on the taskbar button
@@ -72,11 +83,14 @@ indir isn't signed with a paid Apple or Microsoft certificate, so your system as
 1. Copy a link to a file. In a browser, right-click the download link and choose *Copy link*.
 2. Paste it into indir and press Enter. Several links at once work too, one per line, and so does dragging a
    link onto the window.
-3. That's it. From the list you can pause, resume, open the file or show it in its folder.
+3. That's it. From the list you can pause, resume, open the file or show it in its folder; right-click a download
+   for the rest.
 
-**Settings** (bottom right) has where downloads go, your Downloads folder to begin with, and how many connections
-each download may open: 1, 2, 4, 8 or 16. **Shortcuts:** Ctrl+L (⌘L on a Mac) jumps to the link field, Ctrl+,
-(⌘,) opens Settings.
+**Settings** (bottom right) has where downloads go, your Downloads folder to begin with; how many connections each
+download may open: 1, 2, 4, 8 or 16; how many downloads run at once, 3 to begin with; and a speed limit, off to
+begin with. **When done** (at the bottom, while something downloads) puts the computer to sleep, shuts it down or
+quits indir once nothing is left. **Shortcuts:** Ctrl+L (⌘L on a Mac) jumps to the link field, Ctrl+, (⌘,) opens
+Settings.
 
 ## How it works
 
@@ -97,6 +111,10 @@ each download may open: 1, 2, 4, 8 or 16. **Shortcuts:** Ctrl+L (⌘L on a Mac) 
    seconds at most. When every byte is there, the
    `.indir` file gets its real name. An existing file is never overwritten: a second `report.pdf` becomes
    `report (1).pdf`.
+6. **One budget for a speed limit.** With a limit set, every connection of every download takes its share of the
+   same budget of bytes a second before it keeps what it has received, and waits while the budget is spent. A
+   connection that waits reads nothing, so the server slows down to match, and one waiting its turn is never
+   taken for a stuck one.
 
 The download engine is a Rust library of its own, in [`engine/`](engine), with tests that download from a local
 server which can be slow, drop connections, refuse extra ones, trickle, go silent or change the file halfway. It
@@ -112,7 +130,10 @@ cargo run --release -p indir-engine --example get -- https://example.com/big.iso
   hand the file to your browser, which has your cookies; indir doesn't. Direct links do work: release pages,
   mirrors, CDNs and public file links.
 - **Privacy.** indir sends nothing anywhere except the downloads you start, and one question to GitHub when it
-  opens: whether a newer version is out. If one is, a note in the status bar links to it.
+  opens: whether a newer version is out. If one is, a note in the status bar links to it. It reads the clipboard
+  only when you bring its window to the front, and uses what it finds only if that is nothing but links.
+- **Shutting a Mac down** goes through System Events, so the first time you choose *Shut down*, macOS asks whether
+  indir may. If you said no, allow it under **System Settings → Privacy & Security → Automation**.
 - **Where things are kept.** The list of downloads and the settings are two small JSON files in your app-data
   folder: `%APPDATA%\dev.akan.indir` on Windows, `~/Library/Application Support/dev.akan.indir` on macOS and
   `~/.local/share/dev.akan.indir` on Linux.

@@ -16,6 +16,7 @@
       </svg>
       <input id="link" type="text" inputmode="url" spellcheck="false" autocapitalize="off"
              placeholder="Paste a link" aria-label="Link to download">
+      <span id="from-clipboard" class="tag" hidden>From the clipboard</span>
     </label>
     <button class="primary" type="submit">Download</button>
   </form>
@@ -36,6 +37,11 @@
   <footer class="status">
     <span id="summary" class="summary"></span>
     <button id="update" class="pill" type="button" hidden></button>
+    <button id="when-done" class="quiet when-done" type="button" aria-haspopup="menu" hidden>
+      <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 3.5v6" /><path d="M6.4 5.8a5.8 5.8 0 1 0 7.2 0" /></svg>
+      <span id="when-done-label">When done…</span>
+    </button>
+    <button id="all" class="quiet" type="button" hidden></button>
     <button id="clear" class="quiet" type="button" hidden>Clear finished</button>
     <button id="open-settings" class="icon" type="button" aria-label="Settings" title="Settings">
       <svg viewBox="0 0 20 20" aria-hidden="true">
@@ -73,12 +79,56 @@
         <p class="hint">More connections usually means more speed. Some servers allow only a few;
           if downloads from one keep failing, try fewer.</p>
       </section>
+      <section>
+        <h3 id="at-once-title">Downloads at once</h3>
+        <div id="at-once" class="segmented" role="radiogroup" aria-labelledby="at-once-title">
+          <button type="button" role="radio" data-value="1">1</button>
+          <button type="button" role="radio" data-value="2">2</button>
+          <button type="button" role="radio" data-value="3">3</button>
+          <button type="button" role="radio" data-value="5">5</button>
+          <button type="button" role="radio" data-value="">All</button>
+        </div>
+        <p class="hint">The others wait their turn.</p>
+      </section>
+      <section>
+        <h3 id="limit-title">Speed limit</h3>
+        <div id="limit" class="segmented small" role="radiogroup" aria-labelledby="limit-title">
+          <button type="button" role="radio" data-value="">Off</button>
+          <button type="button" role="radio" data-value="1000000">1 MB/s</button>
+          <button type="button" role="radio" data-value="2000000">2 MB/s</button>
+          <button type="button" role="radio" data-value="5000000">5 MB/s</button>
+          <button type="button" role="radio" data-value="10000000">10 MB/s</button>
+          <button type="button" role="radio" data-value="20000000">20 MB/s</button>
+        </div>
+        <p class="hint">Shared by every download, leaving room for everyone else.</p>
+      </section>
       <footer>
         <span>indir <span id="version"></span>, free and open source</span>
         <button id="project" class="link" type="button">Source and updates</button>
       </footer>
     </div>
   </div>
+
+  <div id="countdown" class="sheet" hidden>
+    <div class="sheet-card countdown" role="alertdialog" aria-modal="true" aria-labelledby="countdown-title"
+         aria-describedby="countdown-text">
+      <div class="ring" aria-hidden="true">
+        <svg viewBox="0 0 64 64">
+          <circle class="ring-lane" cx="32" cy="32" r="28" />
+          <circle id="countdown-ring" class="ring-left" cx="32" cy="32" r="28" />
+        </svg>
+        <span id="countdown-seconds">60</span>
+      </div>
+      <h2 id="countdown-title">Shutting down</h2>
+      <p id="countdown-text">Nothing is left to download.</p>
+      <div class="countdown-actions">
+        <button id="countdown-cancel" class="primary" type="button">Cancel</button>
+        <button id="countdown-now" class="secondary" type="button">Shut down now</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="menu" class="menu" role="menu" tabindex="-1" hidden></div>
 
   <div id="drop" class="drop" hidden><span>Drop the link to download it</span></div>
 </body>

@@ -7,7 +7,12 @@ const { listen } = window.__TAURI__.event;
 const $ = (id) => document.getElementById(id);
 const mac = navigator.userAgent.includes('Mac');
 const rows = new Map();
-let settings = { folder: '', connections: 8 };
+let settings = { folder: '', connections: 8, atOnce: 3, speedLimit: null };
+let items = [];
+/** What happens once every download is done: nothing, sleep, shutdown or quit. */
+let whenDone = 'nothing';
+/** The links last put in the field from the clipboard, so they aren't put there again. */
+let offered = '';
 
 /* Numbers in words */
 
@@ -84,12 +89,13 @@ async function run(action) {
   }
 }
 
-function showProblem(text) {
+/** Says what went wrong, for 8 seconds, or until the next action if it must `stay`. */
+function showProblem(text, stay = false) {
   const problem = $('problem');
   problem.textContent = text;
   problem.hidden = false;
   clearTimeout(showProblem.timer);
-  showProblem.timer = setTimeout(hideProblem, 8000);
+  if (!stay) showProblem.timer = setTimeout(hideProblem, 8000);
 }
 
 function hideProblem() {
@@ -108,6 +114,7 @@ function createRow(item) {
     meta: el('div', 'meta'),
     key: null,
     parts: -1,
+    item,
   };
   const top = el('div', 'top');
   top.append(r.name, r.actions);
@@ -119,17 +126,22 @@ function createRow(item) {
       run(() => invoke('open_file', { id: item.id }));
     }
   });
+  r.row.addEventListener('contextmenu', (event) => {
+    event.preventDefault();
+    openMenu(rowMenu(r.item), event.clientX, event.clientY);
+  });
   return r;
 }
 
 function updateRow(r, item) {
+  r.item = item;
   r.row.dataset.status = item.status;
   r.badge.textContent = badge(item.name);
   if (r.name.textContent !== item.name) {
     r.name.textContent = item.name;
     r.name.title = `${item.name}\n${item.url}`;
   }
-  const key = `${item.status}:${item.resumable}`;
+  const key = `${item.status}:${item.resumable}:${item.answered}`;
   if (r.key !== key) {
     r.key = key;
     r.actions.replaceChildren(...actionsFor(item));
@@ -142,8 +154,9 @@ function actionsFor(item) {
   const id = item.id;
   const buttons = [];
   if (item.status === 'downloading') buttons.push(button('Pause', () => invoke('pause', { id })));
+  if (item.status === 'queued') buttons.push(button('Start now', () => invoke('start_now', { id })));
   if (item.status === 'paused') {
-    buttons.push(button(item.resumable ? 'Resume' : 'Start again', () => invoke('resume', { id })));
+    buttons.push(button(startsOver(item) ? 'Start again' : 'Resume', () => invoke('resume', { id })));
   }
   if (item.status === 'failed') buttons.push(button('Try again', () => invoke('resume', { id })));
   if (item.status === 'done') {
@@ -207,6 +220,11 @@ function sizePart(node, [start, end, upto], fresh) {
   return node;
 }
 
+/** A server that answered without byte ranges: going on means from the beginning. */
+function startsOver(item) {
+  return item.answered && !item.resumable;
+}
+
 function metaFor(item) {
   const of = item.size ? `${size(item.received)} of ${size(item.size)}` : size(item.received);
   switch (item.status) {
@@ -218,9 +236,11 @@ function metaFor(item) {
       words.push([item.connections === 1 ? '1 connection' : `${item.connections} connections`]);
       return words;
     }
+    case 'queued':
+      return item.received ? [['Waiting for its turn'], [of]] : [['Waiting for its turn']];
     case 'paused':
-      if (!item.resumable) return [["Paused. This server can't resume, so it starts again from the beginning."]];
-      return [['Paused'], [of]];
+      if (startsOver(item)) return [["Paused. This server can't resume, so it starts again from the beginning."]];
+      return item.received ? [['Paused'], [of]] : [['Paused']];
     case 'failed':
       return [[item.error || 'Stopped by a problem', 'error']];
     default:
@@ -230,7 +250,8 @@ function metaFor(item) {
 
 /* The whole window */
 
-function render(items) {
+function render(next) {
+  items = next;
   const list = $('list');
   const seen = new Set();
   items.forEach((item, i) => {
@@ -252,12 +273,162 @@ function render(items) {
   $('empty').hidden = items.length > 0;
   $('clear').hidden = !items.some((item) => item.status === 'done');
   const running = items.filter((item) => item.status === 'downloading');
+  const waiting = items.filter((item) => item.status === 'queued');
   const speed = running.reduce((total, item) => total + item.speed, 0);
-  $('summary').textContent = running.length
-    ? `${size(speed)}/s · ${running.length} downloading`
-    : items.length
-      ? 'Nothing downloading'
-      : '';
+  const words = [];
+  if (running.length) words.push(`${size(speed)}/s`, `${running.length} downloading`);
+  if (waiting.length) words.push(`${waiting.length} waiting`);
+  if (running.length && settings.speedLimit) words.push(`limit ${settings.speedLimit / 1e6} MB/s`);
+  $('summary').textContent = words.length ? words.join(' · ') : items.length ? 'Nothing downloading' : '';
+  showAll();
+  showWhenDone();
+}
+
+/** Pause all while anything runs or waits; resume all once everything has stopped. */
+function showAll() {
+  const active = items.filter((item) => item.status === 'downloading' || item.status === 'queued').length;
+  const stopped = items.filter((item) => item.status === 'paused' || item.status === 'failed').length;
+  const all = $('all');
+  all.hidden = active ? active + stopped < 2 : stopped < 2;
+  all.textContent = active ? 'Pause all' : 'Resume all';
+  all.dataset.command = active ? 'pause_all' : 'resume_all';
+}
+
+/* When everything is done */
+
+const whenDoneWords = {
+  sleep: { button: 'Sleep when done', title: 'Going to sleep', now: 'Sleep now' },
+  shutdown: { button: 'Shut down when done', title: 'Shutting down', now: 'Shut down now' },
+  quit: { button: 'Quit when done', title: 'Quitting indir', now: 'Quit now' },
+};
+
+function showWhenDone() {
+  const active = items.some((item) => item.status === 'downloading' || item.status === 'queued');
+  const words = whenDoneWords[whenDone];
+  $('when-done').hidden = !active && !words;
+  $('when-done').classList.toggle('armed', Boolean(words));
+  $('when-done-label').textContent = words ? words.button : 'When done…';
+}
+
+function showCountdown(countdown) {
+  const sheet = $('countdown');
+  const words = countdown && whenDoneWords[countdown.action];
+  if (!words) {
+    const wasOpen = !sheet.hidden;
+    sheet.hidden = true;
+    if (wasOpen) $('link').focus();
+    return;
+  }
+  $('countdown-title').textContent = words.title;
+  $('countdown-now').textContent = words.now;
+  const failed = countdown.failed;
+  $('countdown-text').textContent = failed
+    ? `Nothing is left to download. ${failed === 1 ? 'One download' : `${failed} downloads`} stopped with a problem.`
+    : 'Nothing is left to download.';
+  $('countdown-seconds').textContent = countdown.seconds;
+  // The ring empties as the minute runs out.
+  const ring = $('countdown-ring');
+  const length = 2 * Math.PI * ring.r.baseVal.value;
+  ring.style.strokeDasharray = `${length}`;
+  ring.style.strokeDashoffset = `${length * (1 - (countdown.seconds - 1) / 60)}`;
+  if (sheet.hidden) {
+    closeMenu();
+    closeSettings();
+    sheet.hidden = false;
+    $('countdown-cancel').focus();
+  }
+}
+
+/* Menus: a download's own, and what happens once everything is done */
+
+/** Opens a menu at (x, y), kept inside the window. Each entry is an
+    { label, action } item, a { label, checked, action } choice, a { title },
+    or '-' for a line. */
+function openMenu(entries, x, y) {
+  const menu = $('menu');
+  menu.replaceChildren(
+    ...entries.map((entry) => {
+      if (entry === '-') return el('div', 'menu-line');
+      if (entry.title) return el('div', 'menu-title', entry.title);
+      const item = el('button', 'menu-item', entry.label);
+      item.type = 'button';
+      item.setAttribute('role', entry.checked === undefined ? 'menuitem' : 'menuitemradio');
+      if (entry.checked !== undefined) item.setAttribute('aria-checked', String(entry.checked));
+      item.addEventListener('click', () => {
+        closeMenu();
+        run(entry.action);
+      });
+      return item;
+    }),
+  );
+  if (menu.hidden) closeMenu.returnTo = document.activeElement;
+  menu.hidden = false;
+  const { width, height } = menu.getBoundingClientRect();
+  menu.style.left = `${Math.max(8, Math.min(x, innerWidth - width - 8))}px`;
+  menu.style.top = `${y + height > innerHeight - 8 ? Math.max(8, y - height) : y}px`;
+  // The menu itself takes the keys; the arrows reach its items.
+  menu.focus();
+}
+
+function closeMenu() {
+  if ($('menu').hidden) return;
+  $('menu').hidden = true;
+  closeMenu.returnTo?.focus?.();
+}
+
+function rowMenu(item) {
+  const id = item.id;
+  const entries = [];
+  if (item.status === 'downloading') entries.push({ label: 'Pause', action: () => invoke('pause', { id }) });
+  if (item.status === 'queued') {
+    entries.push({ label: 'Start now', action: () => invoke('start_now', { id }) });
+    entries.push({ label: 'Pause', action: () => invoke('pause', { id }) });
+  }
+  if (item.status === 'paused') {
+    entries.push({ label: startsOver(item) ? 'Start again' : 'Resume', action: () => invoke('resume', { id }) });
+  }
+  if (item.status === 'failed') entries.push({ label: 'Try again', action: () => invoke('resume', { id }) });
+  if (item.status === 'done') entries.push({ label: 'Open', action: () => invoke('open_file', { id }) });
+  entries.push({ label: mac ? 'Show in Finder' : 'Show in folder', action: () => invoke('show_in_folder', { id }) });
+  entries.push('-', { label: 'Copy link', action: () => invoke('copy_link', { id }) });
+  if (item.status === 'done') entries.push({ label: 'Download again', action: () => invoke('add', { text: item.url }) });
+  return entries;
+}
+
+const whenDoneChoices = [
+  ['nothing', 'Do nothing'],
+  ['sleep', 'Sleep'],
+  ['shutdown', 'Shut down'],
+  ['quit', 'Quit indir'],
+];
+
+/** Opens above its button, at the bottom of the window. */
+function openWhenDone() {
+  const at = $('when-done').getBoundingClientRect();
+  const choices = whenDoneChoices.map(([action, label]) => ({
+    label,
+    checked: whenDone === action,
+    action: () => invoke('set_when_done', { action }),
+  }));
+  openMenu([{ title: 'When the downloads are done' }, ...choices], at.left, at.top - 6);
+}
+
+/* Links just copied */
+
+/** A link copied in the browser waits in the field when indir comes to the front. */
+async function offerClipboard() {
+  const field = $('link');
+  const busy = () =>
+    field.value.trim() || !$('settings').hidden || !$('countdown').hidden || !$('menu').hidden;
+  if (busy()) return;
+  const links = await invoke('clipboard_links').catch(() => null);
+  // Something may have opened while the clipboard was read.
+  if (!links || links === offered || busy()) return;
+  offered = links;
+  field.value = links;
+  field.focus();
+  field.select();
+  $('from-clipboard').hidden = false;
 }
 
 async function add(text) {
@@ -269,6 +440,7 @@ async function add(text) {
     hideProblem();
     await invoke('add', { text });
     $('link').value = '';
+    $('from-clipboard').hidden = true;
   } catch (error) {
     showProblem(String(error));
     const bar = $('add');
@@ -284,9 +456,30 @@ function showSettings() {
   $('folder').replaceChildren(el('bdi', '', settings.folder));
   $('folder').title = settings.folder;
   $('parts').textContent = settings.connections;
-  for (const choice of $('connections').children) {
-    choice.setAttribute('aria-checked', String(Number(choice.dataset.value) === settings.connections));
+  mark($('connections'), settings.connections);
+  mark($('at-once'), settings.atOnce);
+  mark($('limit'), settings.speedLimit);
+}
+
+/** Checks the choice whose value is `value`; an empty data-value stands for none. */
+function mark(group, value) {
+  for (const choice of group.children) {
+    choice.setAttribute('aria-checked', String(choice.dataset.value === String(value ?? '')));
   }
+}
+
+/** A segmented choice: clicking one sends its value, or null for the empty one. */
+function choose(group, command, argument) {
+  group.addEventListener('click', (event) => {
+    const choice = event.target.closest('[data-value]');
+    if (!choice) return;
+    const value = choice.dataset.value ? Number(choice.dataset.value) : null;
+    run(async () => {
+      settings = await invoke(command, { [argument]: value });
+      showSettings();
+      render(items);
+    });
+  });
 }
 
 async function openSettings() {
@@ -308,7 +501,10 @@ $('add').addEventListener('submit', (event) => {
   add($('link').value);
 });
 
-$('link').addEventListener('input', hideProblem);
+$('link').addEventListener('input', () => {
+  hideProblem();
+  $('from-clipboard').hidden = true;
+});
 $('open-settings').addEventListener('click', openSettings);
 $('settings').addEventListener('click', (event) => {
   if (event.target === $('settings') || event.target.closest('[data-close]')) closeSettings();
@@ -322,17 +518,47 @@ $('change-folder').addEventListener('click', () =>
     }
   }),
 );
-$('connections').addEventListener('click', (event) => {
-  const choice = event.target.closest('[data-value]');
-  if (!choice) return;
-  run(async () => {
-    settings = await invoke('set_connections', { connections: Number(choice.dataset.value) });
-    showSettings();
-  });
-});
+choose($('connections'), 'set_connections', 'connections');
+choose($('at-once'), 'set_at_once', 'atOnce');
+choose($('limit'), 'set_speed_limit', 'limit');
 $('project').addEventListener('click', () => invoke('open_project'));
 $('update').addEventListener('click', () => invoke('open_releases'));
 $('clear').addEventListener('click', () => run(() => invoke('clear_finished')));
+$('all').addEventListener('click', () => run(() => invoke($('all').dataset.command)));
+$('when-done').addEventListener('click', () => {
+  // A second click on the button closes its menu, which the press already did.
+  if (closeMenu.closedOn === $('when-done')) return;
+  openWhenDone();
+});
+$('countdown-cancel').addEventListener('click', () => run(() => invoke('cancel_when_done')));
+$('countdown-now').addEventListener('click', () => run(() => invoke('when_done_now')));
+window.addEventListener('focus', offerClipboard);
+
+// A menu closes on a press anywhere else, and when the window moves on.
+document.addEventListener(
+  'pointerdown',
+  (event) => {
+    closeMenu.closedOn = null;
+    if ($('menu').hidden || event.target.closest('#menu')) return;
+    closeMenu.closedOn = event.target.closest('button');
+    closeMenu();
+  },
+  true,
+);
+window.addEventListener('blur', closeMenu);
+window.addEventListener('resize', closeMenu);
+$('list').addEventListener('scroll', closeMenu);
+$('menu').addEventListener('keydown', (event) => {
+  const choices = [...$('menu').querySelectorAll('button')];
+  const at = choices.indexOf(document.activeElement);
+  if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+    event.preventDefault();
+    const step = event.key === 'ArrowDown' ? 1 : -1;
+    choices[(at + step + choices.length) % choices.length]?.focus();
+  } else if (event.key === 'Tab') {
+    closeMenu();
+  }
+});
 
 window.addEventListener('keydown', (event) => {
   const command = mac ? event.metaKey : event.ctrlKey;
@@ -343,6 +569,10 @@ window.addEventListener('keydown', (event) => {
   } else if (command && event.key === ',') {
     event.preventDefault();
     openSettings();
+  } else if (event.key === 'Escape' && !$('menu').hidden) {
+    closeMenu();
+  } else if (event.key === 'Escape' && !$('countdown').hidden) {
+    run(() => invoke('cancel_when_done'));
   } else if (event.key === 'Escape' && !$('settings').hidden) {
     closeSettings();
   }
@@ -382,11 +612,20 @@ $('keys').replaceChildren(
 
 (async () => {
   await listen('downloads', (event) => render(event.payload));
-  render(await invoke('list'));
+  await listen('when-done', (event) => {
+    whenDone = event.payload;
+    showWhenDone();
+  });
+  await listen('countdown', (event) => showCountdown(event.payload));
+  // From the app, perhaps while nobody was looking: it stays until the next action.
+  await listen('problem', (event) => showProblem(event.payload, true));
   settings = await invoke('get_settings');
+  whenDone = await invoke('get_when_done');
+  render(await invoke('list'));
   showSettings();
   $('version').textContent = await invoke('version');
   $('link').focus();
+  offerClipboard();
   setTimeout(async () => {
     const update = await invoke('check_update').catch(() => null);
     if (update) {

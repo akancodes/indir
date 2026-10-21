@@ -18,7 +18,7 @@
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshot-dark.png">
-  <img src="docs/screenshot-light.png" alt="Parça parça inen iki dosya, duraklatılmış bir dosya ve biten bir dosyayla indir">
+  <img src="docs/screenshot-light.png" alt="Parça parça inen iki dosya, sırasını bekleyen bir dosya ve biten bir dosyayla, iş bitince bilgisayarı kapatmaya ayarlı indir">
 </picture>
 
 ## Neden indir
@@ -26,7 +26,7 @@
 Internet Download Manager'ı (IDM) kullandıysanız fikir aynı, geri kalan her şey çıkarılmış hâli. Tarayıcı bir
 dosyayı tek bağlantıdan indirir; çoğu sunucu da tek bir bağlantının hızını sınırladığı için büyük dosyalar
 sürünür. indir dosyayı parçalara böler, parçaları yan yana indirir, sonra birleştirir. Bir pencere, linki
-yapıştıracağınız bir alan ve iki ayar var, o kadar.
+yapıştıracağınız bir alan ve kısa bir ayarlar sayfası var, o kadar.
 
 ## Neler yapar
 
@@ -44,6 +44,18 @@ yapıştıracağınız bir alan ve iki ayar var, o kadar.
   bunu anlar ve iki sürümü karıştırmak yerine baştan başlar.
 - **Kopan bağlantıya takılmaz.** Kopan ya da takılan bir bağlantı tam kaldığı yerden yeniden açılır. GitHub'ın
   sürüm indirmeleri gibi, süresi dolan imzalı bir adrese götüren linklere yeniden sorulur.
+- **Sıra bekletir.** On link yapıştırın, üçü aynı anda iner; diğerleri sıralarını bekler ve kendiliğinden başlar.
+  *Start now* biriyle sırayı atlatır, *Pause all* her şeyi durdurur.
+- **Başkalarına da yer bırakır.** Bir hız sınırı bütün indirmeleri toplamda, diyelim saniyede 5 MB'ta tutar;
+  evdeki diğerleri film izlemeye devam edebilir. Sınır hemen, sürmekte olan indirmelere de uygulanır.
+- **İş bitince uyutur ya da kapatır.** İnecek bir şey kalmayınca bilgisayarı uyku moduna almasını, kapatmasını
+  ya da kendisinin kapanmasını söyleyin. Önce bir dakika bekler; başındaysanız fikrinizi değiştirebilirsiniz.
+  Sorun yüzünden duran bir indirme varsa bunu da söyler. Bir şey inerken bilgisayar kendiliğinden uykuya
+  geçmez, ekran yine de kapanabilir.
+- **Dosya hazır olunca haber verir;** indir önde değilse bir bildirimle.
+- **Kopyalanan linki yakalar.** Tarayıcıda bir link kopyalayıp indir'e geçin: link alanda hazırdır, geriye
+  Enter'a basmak kalır. Bir indirmeye sağ tıklayarak linkini kopyalayabilir, yeniden indirebilir ya da
+  klasöründe gösterebilirsiniz.
 - **Ne yaptığını gösterir.** Her indirmenin çubuğu dosyanın tamamıdır; her parça kendi başlangıcından dolar.
   Dosya tamamlanınca parçalar birleşip tek bir çubuk olur.
 - **Ayağınıza dolanmaz.** Açık ve koyu tema sisteminizi izler. İlerleme görev çubuğundaki düğmede ya da
@@ -74,11 +86,13 @@ kez sorar:
 1. Bir dosyanın linkini kopyalayın. Tarayıcıda indirme linkine sağ tıklayıp *Bağlantıyı kopyala*'yı seçin.
 2. indir'e yapıştırıp Enter'a basın. Her satıra bir link olmak üzere birkaç linki birden yapıştırabilir ya da
    bir linki pencereye sürükleyebilirsiniz.
-3. Bu kadar. Listeden duraklatabilir, devam ettirebilir, dosyayı açabilir ya da klasöründe gösterebilirsiniz.
+3. Bu kadar. Listeden duraklatabilir, devam ettirebilir, dosyayı açabilir ya da klasöründe gösterebilirsiniz;
+   gerisi için indirmeye sağ tıklayın.
 
-**Ayarlar**'da (sağ altta) indirmelerin nereye kaydedileceği (başta İndirilenler klasörünüz) ve her indirmenin kaç
-bağlantı açabileceği var: 1, 2, 4, 8 ya da 16. **Kısayollar:** Ctrl+L (Mac'te ⌘L) link alanına götürür, Ctrl+,
-(⌘,) Ayarlar'ı açar.
+**Ayarlar**'da (sağ altta) indirmelerin nereye kaydedileceği (başta İndirilenler klasörünüz), her indirmenin kaç
+bağlantı açabileceği (1, 2, 4, 8 ya da 16), aynı anda kaç indirmenin süreceği (başta 3) ve bir hız sınırı (başta
+kapalı) var. **When done** (altta, bir şey inerken) hiçbir şey kalmayınca bilgisayarı uyutur, kapatır ya da
+indir'den çıkar. **Kısayollar:** Ctrl+L (Mac'te ⌘L) link alanına götürür, Ctrl+, (⌘,) Ayarlar'ı açar.
 
 ## Nasıl çalışır
 
@@ -101,6 +115,9 @@ bağlantı açabileceği var: 1, 2, 4, 8 ya da 16. **Kısayollar:** Ctrl+L (Mac'
    birkaç saniyeye mal olur. Her bayt yerine
    gelince `.indir` dosyası asıl adını alır. Var olan bir dosyanın üzerine asla yazılmaz: ikinci bir
    `rapor.pdf`, `rapor (1).pdf` olur.
+6. **Hız sınırı için tek bütçe.** Sınır konunca her indirmenin her bağlantısı, aldığını tutmadan önce saniyedeki
+   bayt bütçesinden payını alır; bütçe bitmişse bekler. Bekleyen bağlantı hiçbir şey okumaz, böylece sunucu da
+   ona göre yavaşlar; sırasını bekleyen bir bağlantı da asla takılmış sanılmaz.
 
 İndirme motoru [`engine/`](engine) klasöründe, kendi başına bir Rust kütüphanesi. Testleri; yavaşlayabilen,
 bağlantı koparan, fazla bağlantıyı reddeden, damla damla gönderen, susan ya da dosyayı yolda değiştiren yerel bir
@@ -116,7 +133,11 @@ cargo run --release -p indir-engine --example get -- https://example.com/buyuk.i
   yalnızca çerezlerinizi bilen tarayıcınıza verir; indir'de o çerezler yok. Doğrudan linkler çalışır: sürüm
   sayfaları, yansı sunucular, CDN'ler ve herkese açık dosya linkleri.
 - **Gizlilik.** indir, sizin başlattığınız indirmeler dışında hiçbir yere bir şey göndermez; açılırken GitHub'a
-  yalnızca yeni bir sürüm çıkıp çıkmadığını sorar. Çıktıysa durum çubuğundaki bir not o sürüme götürür.
+  yalnızca yeni bir sürüm çıkıp çıkmadığını sorar. Çıktıysa durum çubuğundaki bir not o sürüme götürür. Panoya
+  yalnızca penceresini öne getirdiğinizde bakar ve orada bulduğunu yalnızca baştan sona linkse kullanır.
+- **Bir Mac'i kapatmak** System Events üzerinden olur; bu yüzden *Shut down*'ı ilk seçtiğinizde macOS, indir'in
+  buna izni olup olmadığını sorar. Hayır dediyseniz **Sistem Ayarları → Gizlilik ve Güvenlik → Otomasyon**'dan
+  izin verebilirsiniz.
 - **Nerede ne tutulur.** İndirme listesi ve ayarlar, uygulama verisi klasörünüzdeki iki küçük JSON dosyasıdır:
   Windows'ta `%APPDATA%\dev.akan.indir`, macOS'ta `~/Library/Application Support/dev.akan.indir`, Linux'ta
   `~/.local/share/dev.akan.indir`.
