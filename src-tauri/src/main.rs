@@ -14,6 +14,7 @@ use settings::Settings;
 use tauri::{AppHandle, Manager, RunEvent, State, Url, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_opener::OpenerExt;
+use tauri_plugin_window_state::{AppHandleExt, StateFlags};
 
 const PROJECT: &str = "https://github.com/akancodes/indir";
 
@@ -24,12 +25,14 @@ fn main() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_opener::init())
+        // Each window opens where it was last, at the size it was, unless that place is off every screen.
+        .plugin(tauri_plugin_window_state::Builder::default().with_state_flags(window_state()).build())
         .setup(|app| {
             app.manage(Downloads::load(app.handle())?);
             app.manage(Clipboard::default());
             WebviewWindowBuilder::new(app, "main", WebviewUrl::default())
                 .title("indir")
-                .inner_size(820.0, 560.0)
+                .inner_size(1000.0, 680.0)
                 .min_inner_size(480.0, 360.0)
                 .center()
                 // The page takes links dropped on it…
@@ -74,8 +77,14 @@ fn main() {
         if let RunEvent::Exit = event {
             // Running downloads stop with the app; what reached the disk is kept.
             app.state::<Downloads>().save();
+            let _ = app.save_window_state(window_state());
         }
     });
+}
+
+/// What is remembered of each window between launches.
+fn window_state() -> StateFlags {
+    StateFlags::SIZE | StateFlags::POSITION | StateFlags::MAXIMIZED
 }
 
 /// The window only ever shows indir's own page.
