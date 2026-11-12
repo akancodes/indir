@@ -11,7 +11,7 @@ mod update;
 use clipboard::Clipboard;
 use downloads::{Downloads, Location, View, WhenDone};
 use settings::Settings;
-use tauri::{AppHandle, Manager, RunEvent, State, Url, WebviewUrl, WebviewWindowBuilder};
+use tauri::{AppHandle, Manager, RunEvent, State, Url, WebviewUrl, WebviewWindow, WebviewWindowBuilder, WindowEvent};
 use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_opener::OpenerExt;
 use tauri_plugin_window_state::{AppHandleExt, StateFlags};
@@ -38,6 +38,19 @@ fn main() {
                 // The page takes links dropped on it…
                 .disable_drag_drop_handler()
                 // …and never opens one itself.
+                .on_navigation(is_own_page)
+                .build()?;
+            // Mini mode: a small strip that stays on top, hidden until it's asked for.
+            WebviewWindowBuilder::new(app, "mini", WebviewUrl::App("mini.html".into()))
+                .title("indir")
+                .inner_size(320.0, 90.0)
+                .resizable(false)
+                .maximizable(false)
+                .decorations(false)
+                .always_on_top(true)
+                .skip_taskbar(true)
+                .visible(false)
+                .disable_drag_drop_handler()
                 .on_navigation(is_own_page)
                 .build()?;
             downloads::watch(app.handle().clone());
@@ -70,7 +83,20 @@ fn main() {
             check_update,
             open_releases,
             open_project,
+            show_mini,
+            show_main,
+            drag_mini,
         ])
+        .on_window_event(|window, event| match (window.label(), event) {
+            // The strip never closes on its own: closing it goes back to the main window.
+            ("mini", WindowEvent::CloseRequested { api, .. }) => {
+                api.prevent_close();
+                bring_forward(window.app_handle());
+            }
+            // The hidden strip would keep indir running once the main window is gone.
+            ("main", WindowEvent::Destroyed) => window.app_handle().exit(0),
+            _ => {}
+        })
         .build(tauri::generate_context!())
         .expect("indir couldn't start");
     app.run(|app, event| {
@@ -114,12 +140,42 @@ fn reveal(app: &AppHandle, id: u64) -> Result<(), String> {
     .map_err(|e| e.to_string())
 }
 
-fn bring_forward(app: &AppHandle) {
+/// Shows the main window, in front, in place of the strip.
+pub fn bring_forward(app: &AppHandle) {
+    if let Some(mini) = app.get_webview_window("mini") {
+        let _ = mini.hide();
+    }
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.unminimize();
         let _ = window.show();
         let _ = window.set_focus();
     }
+}
+
+/// Swaps the main window for the strip.
+#[tauri::command]
+fn show_mini(app: AppHandle) {
+    let (Some(main), Some(mini)) = (app.get_webview_window("main"), app.get_webview_window("mini")) else { return };
+    // Some window managers place a window afresh each time it shows; the strip goes back where it was.
+    let place = mini.outer_position().ok();
+    let _ = mini.show();
+    if let Some(place) = place {
+        let _ = mini.set_position(place);
+    }
+    let _ = mini.set_always_on_top(true);
+    let _ = main.hide();
+    let _ = mini.set_focus();
+}
+
+#[tauri::command]
+fn show_main(app: AppHandle) {
+    bring_forward(&app);
+}
+
+/// Moves the strip with the pointer, while its button is held.
+#[tauri::command]
+fn drag_mini(window: WebviewWindow) -> Result<(), String> {
+    window.start_dragging().map_err(|e| e.to_string())
 }
 
 #[tauri::command]

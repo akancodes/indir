@@ -418,7 +418,11 @@ function moreMenu() {
   if (items.some((item) => item.status === 'done')) {
     entries.push({ label: 'Clear finished', action: () => invoke('clear_finished') });
   }
-  entries.push('-', { label: 'Settings', keys: mac ? '⌘,' : 'Ctrl+,', action: openSettings });
+  entries.push(
+    { label: 'Mini mode', keys: mac ? '⌘M' : 'Ctrl+M', action: () => invoke('show_mini') },
+    '-',
+    { label: 'Settings', keys: mac ? '⌘,' : 'Ctrl+,', action: openSettings },
+  );
   return entries;
 }
 
@@ -576,6 +580,9 @@ window.addEventListener('keydown', (event) => {
   } else if (command && event.key === ',') {
     event.preventDefault();
     openSettings();
+  } else if (command && event.key.toLowerCase() === 'm') {
+    event.preventDefault();
+    run(() => invoke('show_mini'));
   } else if (event.key === 'Escape' && !$('menu').hidden) {
     closeMenu();
   } else if (event.key === 'Escape' && !$('countdown').hidden) {
