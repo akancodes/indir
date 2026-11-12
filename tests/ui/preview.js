@@ -4,12 +4,14 @@
 (async function () {
   const params = new URLSearchParams(location.search);
   const page = params.get('page') === 'mini' ? 'mini' : 'index';
-  const html = await (await fetch(`../../ui/${page}.html`)).text();
+  // Fresh files each time, so an edit shows on the next load.
+  const fresh = `?v=${Date.now()}`;
+  const html = await (await fetch(`../../ui/${page}.html`, { cache: 'no-store' })).text();
   const doc = new DOMParser().parseFromString(html, 'text/html');
   for (const link of doc.querySelectorAll('link[rel="stylesheet"]')) {
     const node = document.createElement('link');
     node.rel = 'stylesheet';
-    node.href = `../../ui/${link.getAttribute('href')}`;
+    node.href = `../../ui/${link.getAttribute('href')}${fresh}`;
     document.head.append(node);
   }
   document.documentElement.className = doc.documentElement.className;
@@ -18,12 +20,10 @@
   for (const script of doc.querySelectorAll('script[src]')) {
     await new Promise((resolve, reject) => {
       const node = document.createElement('script');
-      node.src = `../../ui/${script.getAttribute('src')}`;
+      node.src = `../../ui/${script.getAttribute('src')}${fresh}`;
       node.onload = resolve;
       node.onerror = reject;
       document.body.append(node);
     });
   }
-  const open = params.get('open');
-  if (open) setTimeout(() => window.__previewOpen?.(open), 300);
 })();

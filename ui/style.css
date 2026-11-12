@@ -601,53 +601,91 @@ kbd {
   font: 600 11.5px var(--mono);
 }
 
+/* A card filling up, then done, again and again: what indir does, without words. */
 .demo {
-  display: flex;
-  gap: 4px;
-  width: min(380px, 78vw);
-  height: 12px;
-  animation: join 4.2s infinite;
-}
-
-.demo span {
+  --accent: var(--archive);
   position: relative;
-  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: min(360px, 78vw);
+  height: 64px;
+  padding: 0 14px;
   overflow: hidden;
-  border-radius: 3px;
-  background: var(--lane);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
 }
 
-.demo span::before {
-  content: "";
+.demo > span {
+  position: relative;
+}
+
+.demo .demo-fill {
   position: absolute;
-  inset: 0;
-  background: var(--bytes);
-  transform: scaleX(0);
-  transform-origin: left;
-  animation: lane 4.2s infinite;
+  inset: 0 auto 0 0;
+  width: 0;
+  background: var(--archive-fill);
+  animation: demo-fill 4.2s ease-in-out infinite;
 }
 
-/* Every lane finishes together, each at its own pace. */
-.demo span:nth-child(1)::before { animation-timing-function: cubic-bezier(0.2, 0.7, 0.5, 1); }
-.demo span:nth-child(2)::before { animation-timing-function: cubic-bezier(0.6, 0.1, 0.8, 0.6); }
-.demo span:nth-child(3)::before { animation-timing-function: cubic-bezier(0.3, 0.4, 0.4, 0.9); }
-.demo span:nth-child(4)::before { animation-timing-function: cubic-bezier(0.7, 0, 0.9, 1); }
-.demo span:nth-child(5)::before { animation-timing-function: cubic-bezier(0.1, 0.9, 0.6, 1); }
-.demo span:nth-child(6)::before { animation-timing-function: cubic-bezier(0.5, 0.2, 0.6, 0.8); }
-.demo span:nth-child(7)::before { animation-timing-function: cubic-bezier(0.3, 0.8, 0.9, 0.4); }
-.demo span:nth-child(8)::before { animation-timing-function: cubic-bezier(0.8, 0.3, 0.4, 0.9); }
-
-@keyframes lane {
-  0% { transform: scaleX(0); background: var(--bytes); opacity: 1; }
-  72% { transform: scaleX(1); background: var(--bytes); }
-  80% { transform: scaleX(1); background: var(--done); }
-  93% { transform: scaleX(1); background: var(--done); opacity: 1; }
-  100% { transform: scaleX(1); background: var(--done); opacity: 0; }
+.demo-badge {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: var(--archive);
+  color: var(--on-accent);
+  font: 700 10px var(--mono);
+  animation: demo-badge 4.2s ease-in-out infinite;
 }
 
-@keyframes join {
-  0%, 73% { gap: 4px; }
-  80%, 100% { gap: 0; }
+.demo-lines {
+  flex: 1;
+  display: grid;
+  gap: 7px;
+}
+
+.demo-lines span {
+  height: 8px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--ink) 16%, transparent);
+}
+
+.demo-lines span + span {
+  width: 55%;
+  background: color-mix(in srgb, var(--ink) 9%, transparent);
+}
+
+/* A tick once it's done. Opacity, not content: WebKit doesn't animate content. */
+.demo-percent::before {
+  content: "\2713";
+  color: var(--done);
+  font-size: 24px;
+  font-weight: 750;
+  opacity: 0;
+  animation: demo-done 4.2s ease-in-out infinite;
+}
+
+@keyframes demo-fill {
+  0% { width: 0; background: var(--archive-fill); }
+  70% { width: 100%; background: var(--archive-fill); }
+  78%, 92% { width: 100%; background: var(--done-fill); }
+  100% { width: 100%; background: var(--done-fill); opacity: 0; }
+}
+
+@keyframes demo-badge {
+  0%, 72% { background: var(--archive); }
+  78%, 100% { background: var(--done); }
+}
+
+@keyframes demo-done {
+  0%, 72% { opacity: 0; }
+  78%, 92% { opacity: 1; }
+  100% { opacity: 0; }
 }
 
 /* The status line */
@@ -748,11 +786,11 @@ kbd {
 .icon {
   display: grid;
   place-items: center;
-  width: 30px;
-  height: 30px;
+  width: 32px;
+  height: 32px;
   padding: 0;
   border: 0;
-  border-radius: 8px;
+  border-radius: 50%;
   background: transparent;
   color: var(--muted);
 }
@@ -792,7 +830,7 @@ kbd {
   overflow-y: auto;
   padding: 18px 20px 16px;
   border: 1px solid var(--line);
-  border-radius: 16px;
+  border-radius: 20px;
   background: var(--surface);
   box-shadow: 0 24px 60px rgba(0, 0, 0, 0.25);
 }
@@ -856,7 +894,7 @@ kbd {
 .segmented {
   display: flex;
   padding: 3px;
-  border-radius: 10px;
+  border-radius: 12px;
   background: var(--bg);
 }
 
@@ -868,6 +906,7 @@ kbd {
   background: transparent;
   color: var(--muted);
   font: 600 13px var(--mono);
+  border-radius: 9px;
 }
 
 .segmented button[aria-checked="true"] {
@@ -976,10 +1015,10 @@ kbd {
 .menu {
   position: fixed;
   z-index: 2;
-  min-width: 190px;
-  padding: 5px;
+  min-width: 200px;
+  padding: 6px;
   border: 1px solid var(--line);
-  border-radius: 10px;
+  border-radius: 14px;
   background: var(--surface);
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
   animation: fade 0.1s ease;
@@ -1009,10 +1048,10 @@ kbd {
   display: flex;
   align-items: center;
   width: 100%;
-  height: 30px;
+  height: 32px;
   padding: 0 10px;
   border: 0;
-  border-radius: 6px;
+  border-radius: 8px;
   background: transparent;
   font-size: 13px;
   text-align: left;
@@ -1058,7 +1097,7 @@ kbd {
   display: grid;
   place-items: center;
   border: 2px dashed var(--bytes);
-  border-radius: 16px;
+  border-radius: 20px;
   background: var(--bytes-ring);
   color: var(--bytes);
   font-size: 16px;
@@ -1093,11 +1132,7 @@ kbd {
     transition-duration: 0.01ms !important;
   }
 
-  .demo span::before {
-    transform: scaleX(0.7);
-  }
-
-  .demo span:nth-child(odd)::before {
-    transform: scaleX(0.45);
+  .demo .demo-fill {
+    width: 60%;
   }
 }

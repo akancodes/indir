@@ -1,6 +1,6 @@
 #!/bin/sh
-# indir's window checks under Xvfb with openbox, inside the indir-dev image (see CONTRIBUTING or the
-# project notes): mount the build's target at /target and this folder at /gui, then `sh /gui/run.sh`.
+# indir's window checks under Xvfb with openbox, inside a Debian image with Rust,
+# libwebkit2gtk-4.1-dev, xvfb, xdotool, imagemagick and dbus-x11: mount the build's target at /target and this folder at /gui, then `sh /gui/run.sh`.
 # Prints one line per check: PASS/FAIL <what> <detail>.
 set -u
 BIN=/target/debug/indir
