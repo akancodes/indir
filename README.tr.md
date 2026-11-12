@@ -18,7 +18,7 @@
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshot-dark.png">
-  <img src="docs/screenshot-light.png" alt="Parça parça inen iki dosya, sırasını bekleyen bir dosya ve biten bir dosyayla, iş bitince bilgisayarı kapatmaya ayarlı indir">
+  <img src="docs/screenshot-light.png" alt="Kartları dolan iki indirme, sırasını bekleyen bir dosya ve biten bir dosyayla, iş bitince bilgisayarı kapatmaya ayarlı indir">
 </picture>
 
 ## Neden indir
@@ -56,8 +56,13 @@ yapıştıracağınız bir alan ve kısa bir ayarlar sayfası var, o kadar.
 - **Kopyalanan linki yakalar.** Tarayıcıda bir link kopyalayıp indir'e geçin: link alanda hazırdır, geriye
   Enter'a basmak kalır. Bir indirmeye sağ tıklayarak linkini kopyalayabilir, yeniden indirebilir ya da
   klasöründe gösterebilirsiniz.
-- **Ne yaptığını gösterir.** Her indirmenin çubuğu dosyanın tamamıdır; her parça kendi başlangıcından dolar.
-  Dosya tamamlanınca parçalar birleşip tek bir çubuk olur.
+- **Ne yaptığını gösterir.** Her indirme, dosyasının renginde dolan bir karttır (arşivler mor, disk kalıpları
+  yeşil, videolar turuncu, uygulamalar pembe, belgeler mavi); adının yanında büyük bir yüzde durur. Bir karta
+  tıklayınca her biri kendi başlangıcından dolan parçalar, linki ve klasörü görünür.
+- **Her pencereye uyar.** Genişlettikçe kartlar iki, sonra üç sütuna dizilir; pencere bıraktığınız yerde ve
+  boyutta açılır.
+- **Bir şeride küçülür.** *Mini mode* pencerenin yerine her şeyin üstünde duran, bütün indirmelerle birlikte dolan
+  küçük bir şerit koyar. Geri dönmek için tıklayın, istediğiniz yere sürükleyin.
 - **Ayağınıza dolanmaz.** Açık ve koyu tema sisteminizi izler. İlerleme görev çubuğundaki düğmede ya da
   Dock simgesinde de görünür.
 
@@ -86,13 +91,15 @@ kez sorar:
 1. Bir dosyanın linkini kopyalayın. Tarayıcıda indirme linkine sağ tıklayıp *Bağlantıyı kopyala*'yı seçin.
 2. indir'e yapıştırıp Enter'a basın. Her satıra bir link olmak üzere birkaç linki birden yapıştırabilir ya da
    bir linki pencereye sürükleyebilirsiniz.
-3. Bu kadar. Listeden duraklatabilir, devam ettirebilir, dosyayı açabilir ya da klasöründe gösterebilirsiniz;
-   gerisi için indirmeye sağ tıklayın.
+3. Bu kadar. Bir indirmenin üstüne gelince duraklatabilir, devam ettirebilir, dosyayı açabilir ya da klasöründe
+   gösterebilirsiniz; gerisi için sağ tıklayın, ayrıntıları için tıklayın.
 
-**Ayarlar**'da (sağ altta) indirmelerin nereye kaydedileceği (başta İndirilenler klasörünüz), her indirmenin kaç
+Sağ alttaki **⋯** menüsünde When done, Clear finished, Mini mode ve Settings var. **Ayarlar**'da indirmelerin nereye kaydedileceği (başta İndirilenler klasörünüz), her indirmenin kaç
 bağlantı açabileceği (1, 2, 4, 8 ya da 16), aynı anda kaç indirmenin süreceği (başta 3) ve bir hız sınırı (başta
-kapalı) var. **When done** (altta, bir şey inerken) hiçbir şey kalmayınca bilgisayarı uyutur, kapatır ya da
-indir'den çıkar. **Kısayollar:** Ctrl+L (Mac'te ⌘L) link alanına götürür, Ctrl+, (⌘,) Ayarlar'ı açar.
+kapalı) var. **When done** hiçbir şey kalmayınca bilgisayarı uyutur, kapatır ya da indir'den çıkar; seçiliyken
+⋯ düğmesinde bir nokta olur ve durum satırı ne olacağını söyler. **Kısayollar:** Ctrl+L (Mac'te ⌘L) link
+alanına götürür, Ctrl+, (⌘,) Ayarlar'ı açar, Ctrl+M (Mac'te ⌘M küçülttüğü için ⇧⌘M) mini şeride
+geçirir.
 
 ## Nasıl çalışır
 
@@ -143,6 +150,9 @@ cargo run --release -p indir-engine --example get -- https://example.com/buyuk.i
   `~/.local/share/dev.akan.indir`.
 - **Adlar temizlenir.** Sunucudan gelen bir addan Windows, macOS ya da Linux'un kaldıramayacağı karakterler ve
   `rapor.exe`'yi PDF gibi gösterebilecek görünmez karakterler çıkarılır.
+- **Wayland kullanan Linux'ta** pencerelerin nerede açılacağına masaüstü karar verir; bu yüzden indir pencereyi ve
+  mini şeridi bıraktığınız yere geri koyamaz, şerit de her zaman üstte kalmayabilir. X11, Windows ve macOS'ta
+  ikisi de çalışır.
 - **Bir indirmeyi kaldırmak** onu listeden çıkarır. Bitmiş dosya olduğu yerde kalır; bitmemiş birinin `.indir`
   dosyası silinir.
 
@@ -157,13 +167,18 @@ npm install
 npm run dev      # uygulama; ui/ klasörünü değiştirdikçe yenilenir
 npm run build    # sisteminiz için bir kurulum dosyası, target/release/bundle içinde
 cargo test       # bütün testler; motorunkiler pencere gerektirmez
+node --test 'tests/ui/*.test.cjs'   # pencerenin kendi mantığı, pencere olmadan
 ```
+
+Pencereyi düz bir tarayıcıda görmek için depoyu sunun (`python3 -m http.server`) ve
+`/tests/ui/preview.html?fixture=mixed` adresini açın; `ui/` klasörünü uygulamanın yerine geçen bir taklitle çalıştırır.
 
 | Klasör | İçinde ne var |
 | --- | --- |
 | [`engine/`](engine) | İndirme motoru: ilk soru, parçalar, bağlantılar, hız izleme ve kaldığı yerden devam. Arayüzü yok. |
 | [`src-tauri/`](src-tauri) | Onu saran, [Tauri](https://tauri.app) ile yapılmış masaüstü uygulaması: liste, ayarlar ve pencerenin çağırdığı komutlar. |
-| [`ui/`](ui) | Pencere: düz HTML, CSS ve JavaScript; derleme adımı yok. |
+| [`ui/`](ui) | Pencere ve mini şerit: düz HTML, CSS ve JavaScript; derleme adımı yok. |
+| [`tests/`](tests) | Pencerenin mantık testleri, tarayıcı önizlemesi ve gerçek pencerelerin Xvfb altındaki kontrolleri. |
 
 Hata bildirimleri ve pull request'ler memnuniyetle karşılanır. indir küçük kalmak istiyor, bu yüzden yeni bir
 özelliğin yerini hak etmesi gerekiyor.

@@ -14,41 +14,7 @@ let whenDone = 'nothing';
 /** The links last put in the field from the clipboard, so they aren't put there again. */
 let offered = '';
 
-/* Numbers in words */
-
-function size(bytes) {
-  if (bytes < 1000) return `${bytes} B`;
-  const units = ['KB', 'MB', 'GB', 'TB'];
-  let value = bytes;
-  let unit = -1;
-  do {
-    value /= 1000;
-    unit += 1;
-  } while (value >= 999.95 && unit < units.length - 1);
-  return `${value >= 100 ? Math.round(value) : value.toFixed(1)} ${units[unit]}`;
-}
-
-function duration(seconds) {
-  if (seconds < 60) return `${Math.max(1, Math.round(seconds))} s`;
-  const minutes = Math.round(seconds / 60);
-  if (minutes < 60) return `${minutes} min`;
-  return `${Math.floor(minutes / 60)} h ${minutes % 60} min`;
-}
-
-function finishedAt(unix) {
-  const date = new Date(unix * 1000);
-  if (date.toDateString() === new Date().toDateString()) {
-    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  }
-  return date.toLocaleDateString([], { day: 'numeric', month: 'short' });
-}
-
-function badge(name) {
-  const dot = name.lastIndexOf('.');
-  const extension = dot > 0 ? name.slice(dot + 1) : '';
-  if (!extension) return 'FILE';
-  return (extension.length <= 4 ? extension : extension.slice(0, 3)).toUpperCase();
-}
+const { badge, startsOver, typeGroup, fillFraction, cardWords, detailWords, shortcut } = window.indirLogic;
 
 /* Building blocks */
 
@@ -69,13 +35,6 @@ function icon(paths) {
     svg.append(path);
   }
   return svg;
-}
-
-function button(label, action) {
-  const node = el('button', '', label);
-  node.type = 'button';
-  node.addEventListener('click', () => run(action));
-  return node;
 }
 
 /** Runs a command, and says so if it fails. */
@@ -102,28 +61,68 @@ function hideProblem() {
   $('problem').hidden = true;
 }
 
-/* One row per download */
+/* One card per download */
+
+const icons = {
+  pause: ['M7.5 5v10M12.5 5v10'],
+  resume: ['M7 4.8v10.4l8.2-5.2z'],
+  startNow: ['M5.5 4.8v10.4l7.2-5.2z', 'M15 5v10'],
+  again: ['M15.5 10a5.5 5.5 0 1 1-1.6-3.9', 'M15.5 3.8v3.4h-3.4'],
+  open: ['M8 4.5H5.5a1 1 0 0 0-1 1v9a1 1 0 0 0 1 1h9a1 1 0 0 0 1-1V12', 'M11 4.5h4.5V9', 'M15.5 4.5L9 11'],
+  folder: ['M3.5 6a1 1 0 0 1 1-1h3.3l1.6 1.8h6.1a1 1 0 0 1 1 1V14a1 1 0 0 1-1 1H4.5a1 1 0 0 1-1-1z'],
+  remove: ['M5.5 5.5l9 9M14.5 5.5l-9 9'],
+  done: ['M4.5 10.5l3.6 3.6 7.4-8'],
+};
+
+/** A round button with an icon; its words are its label and tooltip. */
+function iconButton(label, paths, action) {
+  const node = el('button', 'round');
+  node.type = 'button';
+  node.title = label;
+  node.setAttribute('aria-label', label);
+  node.append(icon(paths));
+  node.addEventListener('click', () => run(action));
+  return node;
+}
 
 function createRow(item) {
   const r = {
-    row: el('article', 'row'),
+    row: el('article', 'card'),
+    fill: el('div', 'fill'),
     badge: el('div', 'badge'),
     name: el('span', 'name'),
+    words: el('div', 'words'),
+    percent: el('div', 'percent'),
     actions: el('div', 'actions'),
+    details: el('div', 'details'),
     strip: el('div', 'strip'),
-    meta: el('div', 'meta'),
+    facts: el('div', 'facts'),
     key: null,
     parts: -1,
     item,
   };
-  const top = el('div', 'top');
-  top.append(r.name, r.actions);
-  const body = el('div', 'body');
-  body.append(top, r.strip, r.meta);
-  r.row.append(r.badge, body);
+  r.row.tabIndex = 0;
+  const text = el('div', 'text');
+  text.append(r.name, r.words);
+  const side = el('div', 'side');
+  side.append(r.percent, r.actions);
+  r.details.append(r.strip, r.facts);
+  r.row.append(r.fill, r.badge, text, side, r.details);
+  // A click opens the details; a double click on a finished file opens the file.
+  r.row.addEventListener('click', (event) => {
+    if (event.target.closest('button, .facts')) return;
+    r.row.classList.toggle('open');
+  });
   r.row.addEventListener('dblclick', (event) => {
-    if (r.row.dataset.status === 'done' && !event.target.closest('button')) {
-      run(() => invoke('open_file', { id: item.id }));
+    if (r.row.dataset.status === 'done' && !event.target.closest('button, .facts')) {
+      run(() => invoke('open_file', { id: r.item.id }));
+    }
+  });
+  r.row.addEventListener('keydown', (event) => {
+    if (event.target !== r.row) return;
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      r.row.classList.toggle('open');
     }
   });
   r.row.addEventListener('contextmenu', (event) => {
@@ -136,32 +135,47 @@ function createRow(item) {
 function updateRow(r, item) {
   r.item = item;
   r.row.dataset.status = item.status;
+  r.row.dataset.type = typeGroup(item.name);
   r.badge.textContent = badge(item.name);
   if (r.name.textContent !== item.name) {
     r.name.textContent = item.name;
-    r.name.title = `${item.name}\n${item.url}`;
+    r.name.title = item.name;
   }
+  const fraction = fillFraction(item);
+  r.row.classList.toggle('unknown', fraction === null);
+  r.fill.style.width = `${(fraction ?? 0) * 100}%`;
+  if (item.status === 'done') {
+    if (!r.percent.firstChild || r.percent.firstChild.nodeName !== 'svg') r.percent.replaceChildren(icon(icons.done));
+  } else {
+    r.percent.textContent = fraction === null ? '' : `${Math.floor(fraction * 100)}%`;
+  }
+  const words = cardWords(item);
+  r.words.classList.toggle('error', words.error);
+  r.words.replaceChildren(...words.main.map((word) => el('span', '', word)));
+  // The line may be cut; the whole of it is in its tooltip and in the details.
+  r.words.title = words.main.join(' · ');
   const key = `${item.status}:${item.resumable}:${item.answered}`;
   if (r.key !== key) {
     r.key = key;
     r.actions.replaceChildren(...actionsFor(item));
   }
   drawStrip(r, item);
-  r.meta.replaceChildren(...metaFor(item).map(([text, className]) => el('span', className, text)));
+  drawFacts(r, item);
 }
 
 function actionsFor(item) {
   const id = item.id;
   const buttons = [];
-  if (item.status === 'downloading') buttons.push(button('Pause', () => invoke('pause', { id })));
-  if (item.status === 'queued') buttons.push(button('Start now', () => invoke('start_now', { id })));
+  if (item.status === 'downloading') buttons.push(iconButton('Pause', icons.pause, () => invoke('pause', { id })));
+  if (item.status === 'queued') buttons.push(iconButton('Start now', icons.startNow, () => invoke('start_now', { id })));
   if (item.status === 'paused') {
-    buttons.push(button(startsOver(item) ? 'Start again' : 'Resume', () => invoke('resume', { id })));
+    const label = startsOver(item) ? 'Start again' : 'Resume';
+    buttons.push(iconButton(label, startsOver(item) ? icons.again : icons.resume, () => invoke('resume', { id })));
   }
-  if (item.status === 'failed') buttons.push(button('Try again', () => invoke('resume', { id })));
+  if (item.status === 'failed') buttons.push(iconButton('Try again', icons.again, () => invoke('resume', { id })));
   if (item.status === 'done') {
-    buttons.push(button('Open', () => invoke('open_file', { id })));
-    buttons.push(button(mac ? 'Show in Finder' : 'Show in folder', () => invoke('show_in_folder', { id })));
+    buttons.push(iconButton('Open', icons.open, () => invoke('open_file', { id })));
+    buttons.push(iconButton(mac ? 'Show in Finder' : 'Show in folder', icons.folder, () => invoke('show_in_folder', { id })));
   }
   buttons.push(removeButton(item));
   return buttons;
@@ -170,8 +184,8 @@ function actionsFor(item) {
 /** Removing a finished download only takes it off the list. An unfinished
     one loses what it has fetched, so that takes a second click. */
 function removeButton(item) {
-  const cross = icon(['M5 5l10 10M15 5L5 15']);
-  const node = el('button', 'remove');
+  const cross = icon(icons.remove);
+  const node = el('button', 'round remove');
   node.type = 'button';
   const finished = item.status === 'done';
   const label = finished ? 'Remove from the list (the file stays)' : 'Remove, and delete what it has fetched';
@@ -196,11 +210,11 @@ function removeButton(item) {
   return node;
 }
 
+/** The details' strip: the file as one bar, each connection's part filling from its own start. */
 function drawStrip(r, item) {
   let parts = item.parts;
   if (item.status === 'done' && parts.length === 0) parts = [[0, 1, 1]];
   if (parts.length === 0) parts = [[0, 1, item.size ? item.received / item.size : 0]];
-  r.strip.classList.toggle('unknown', item.status === 'downloading' && !item.size);
   if (r.parts !== parts.length) {
     // New elements get their sizes before they are shown, so nothing animates from zero.
     r.strip.replaceChildren(...parts.map((part) => sizePart(el('span', 'part'), part, true)));
@@ -211,7 +225,7 @@ function drawStrip(r, item) {
 }
 
 function sizePart(node, [start, end, upto], fresh) {
-  if (fresh) node.append(el('span', 'fill'));
+  if (fresh) node.append(el('span', 'part-fill'));
   node.style.left = `${start * 100}%`;
   node.style.width = `${(end - start) * 100}%`;
   const filled = end > start ? Math.min(1, Math.max(0, (upto - start) / (end - start))) : 1;
@@ -220,32 +234,13 @@ function sizePart(node, [start, end, upto], fresh) {
   return node;
 }
 
-/** A server that answered without byte ranges: going on means from the beginning. */
-function startsOver(item) {
-  return item.answered && !item.resumable;
-}
-
-function metaFor(item) {
-  const of = item.size ? `${size(item.received)} of ${size(item.size)}` : size(item.received);
-  switch (item.status) {
-    case 'downloading': {
-      if (!item.connections && !item.received) return [['Connecting…']];
-      const words = [[of]];
-      if (item.speed) words.push([`${size(item.speed)}/s`]);
-      if (item.eta !== null && item.speed) words.push([`${duration(item.eta)} left`]);
-      words.push([item.connections === 1 ? '1 connection' : `${item.connections} connections`]);
-      return words;
-    }
-    case 'queued':
-      return item.received ? [['Waiting for its turn'], [of]] : [['Waiting for its turn']];
-    case 'paused':
-      if (startsOver(item)) return [["Paused. This server can't resume, so it starts again from the beginning."]];
-      return item.received ? [['Paused'], [of]] : [['Paused']];
-    case 'failed':
-      return [[item.error || 'Stopped by a problem', 'error']];
-    default:
-      return [[size(item.size ?? item.received)], [`Finished ${finishedAt(item.finished ?? item.added)}`]];
-  }
+/** The details' words: connections, the whole problem or warning, the link and the folder. */
+function drawFacts(r, item) {
+  const words = detailWords(item);
+  const key = words.join('\n');
+  if (r.facts.dataset.key === key) return;
+  r.facts.dataset.key = key;
+  r.facts.replaceChildren(...words.map((word) => el('span', '', word)));
 }
 
 /* The whole window */
@@ -271,15 +266,7 @@ function render(next) {
     }
   }
   $('empty').hidden = items.length > 0;
-  $('clear').hidden = !items.some((item) => item.status === 'done');
-  const running = items.filter((item) => item.status === 'downloading');
-  const waiting = items.filter((item) => item.status === 'queued');
-  const speed = running.reduce((total, item) => total + item.speed, 0);
-  const words = [];
-  if (running.length) words.push(`${size(speed)}/s`, `${running.length} downloading`);
-  if (waiting.length) words.push(`${waiting.length} waiting`);
-  if (running.length && settings.speedLimit) words.push(`limit ${settings.speedLimit / 1e6} MB/s`);
-  $('summary').textContent = words.length ? words.join(' · ') : items.length ? 'Nothing downloading' : '';
+  $('summary').textContent = window.indirLogic.summary(items, settings.speedLimit, whenDone);
   showAll();
   showWhenDone();
 }
@@ -290,7 +277,12 @@ function showAll() {
   const stopped = items.filter((item) => item.status === 'paused' || item.status === 'failed').length;
   const all = $('all');
   all.hidden = active ? active + stopped < 2 : stopped < 2;
-  all.textContent = active ? 'Pause all' : 'Resume all';
+  const label = active ? 'Pause all' : 'Resume all';
+  if (all.title !== label) {
+    all.title = label;
+    all.setAttribute('aria-label', label);
+    all.replaceChildren(icon(active ? icons.pause : icons.resume));
+  }
   all.dataset.command = active ? 'pause_all' : 'resume_all';
 }
 
@@ -302,12 +294,10 @@ const whenDoneWords = {
   quit: { button: 'Quit when done', title: 'Quitting indir', now: 'Quit now' },
 };
 
+/** A chosen action marks the menu's button, and the footer's line says it. */
 function showWhenDone() {
-  const active = items.some((item) => item.status === 'downloading' || item.status === 'queued');
-  const words = whenDoneWords[whenDone];
-  $('when-done').hidden = !active && !words;
-  $('when-done').classList.toggle('armed', Boolean(words));
-  $('when-done-label').textContent = words ? words.button : 'When done…';
+  $('more').classList.toggle('armed', Boolean(whenDoneWords[whenDone]));
+  $('summary').textContent = window.indirLogic.summary(items, settings.speedLimit, whenDone);
 }
 
 function showCountdown(countdown) {
@@ -352,10 +342,12 @@ function openMenu(entries, x, y) {
       if (entry.title) return el('div', 'menu-title', entry.title);
       const item = el('button', 'menu-item', entry.label);
       item.type = 'button';
+      if (entry.keys) item.append(el('kbd', 'menu-keys', entry.keys));
       item.setAttribute('role', entry.checked === undefined ? 'menuitem' : 'menuitemradio');
       if (entry.checked !== undefined) item.setAttribute('aria-checked', String(entry.checked));
       item.addEventListener('click', () => {
-        closeMenu();
+        // An entry that opens another menu in its place leaves the focus to it.
+        if (!entry.keep) closeMenu();
         run(entry.action);
       });
       return item;
@@ -402,15 +394,34 @@ const whenDoneChoices = [
   ['quit', 'Quit indir'],
 ];
 
-/** Opens above its button, at the bottom of the window. */
-function openWhenDone() {
-  const at = $('when-done').getBoundingClientRect();
+/** Opens above `anchor`, at the bottom of the window. */
+function openAbove(anchor, entries) {
+  const at = anchor.getBoundingClientRect();
+  openMenu(entries, at.right, at.top - 6);
+}
+
+function openWhenDone(anchor) {
   const choices = whenDoneChoices.map(([action, label]) => ({
     label,
     checked: whenDone === action,
     action: () => invoke('set_when_done', { action }),
   }));
-  openMenu([{ title: 'When the downloads are done' }, ...choices], at.left, at.top - 6);
+  openAbove(anchor, [{ title: 'When the downloads are done' }, ...choices]);
+}
+
+/** The footer's menu: what happens when done, clearing the list, settings. */
+function moreMenu() {
+  const words = whenDoneWords[whenDone];
+  const entries = [{ label: words ? `${words.button}…` : 'When done…', action: () => openWhenDone($('more')), keep: true }];
+  if (items.some((item) => item.status === 'done')) {
+    entries.push({ label: 'Clear finished', action: () => invoke('clear_finished') });
+  }
+  entries.push(
+    { label: 'Mini mode', keys: mac ? '⇧⌘M' : 'Ctrl+M', action: () => invoke('show_mini') },
+    '-',
+    { label: 'Settings', keys: mac ? '⌘,' : 'Ctrl+,', action: openSettings },
+  );
+  return entries;
 }
 
 /* Links just copied */
@@ -491,7 +502,7 @@ async function openSettings() {
 
 function closeSettings() {
   $('settings').hidden = true;
-  $('open-settings').focus();
+  $('more').focus();
 }
 
 /* Wiring */
@@ -505,7 +516,6 @@ $('link').addEventListener('input', () => {
   hideProblem();
   $('from-clipboard').hidden = true;
 });
-$('open-settings').addEventListener('click', openSettings);
 $('settings').addEventListener('click', (event) => {
   if (event.target === $('settings') || event.target.closest('[data-close]')) closeSettings();
 });
@@ -523,12 +533,11 @@ choose($('at-once'), 'set_at_once', 'atOnce');
 choose($('limit'), 'set_speed_limit', 'limit');
 $('project').addEventListener('click', () => invoke('open_project'));
 $('update').addEventListener('click', () => invoke('open_releases'));
-$('clear').addEventListener('click', () => run(() => invoke('clear_finished')));
 $('all').addEventListener('click', () => run(() => invoke($('all').dataset.command)));
-$('when-done').addEventListener('click', () => {
+$('more').addEventListener('click', () => {
   // A second click on the button closes its menu, which the press already did.
-  if (closeMenu.closedOn === $('when-done')) return;
-  openWhenDone();
+  if (closeMenu.closedOn === $('more')) return;
+  openAbove($('more'), moreMenu());
 });
 $('countdown-cancel').addEventListener('click', () => run(() => invoke('cancel_when_done')));
 $('countdown-now').addEventListener('click', () => run(() => invoke('when_done_now')));
@@ -561,14 +570,18 @@ $('menu').addEventListener('keydown', (event) => {
 });
 
 window.addEventListener('keydown', (event) => {
-  const command = mac ? event.metaKey : event.ctrlKey;
-  if (command && event.key.toLowerCase() === 'l') {
+  const action = shortcut(event, mac);
+  if (action === 'link') {
     event.preventDefault();
     $('link').focus();
     $('link').select();
-  } else if (command && event.key === ',') {
+  } else if (action === 'settings') {
     event.preventDefault();
     openSettings();
+  } else if (action === 'mini') {
+    event.preventDefault();
+    // The countdown stays in view: it has the Cancel.
+    if ($('countdown').hidden) run(() => invoke('show_mini'));
   } else if (event.key === 'Escape' && !$('menu').hidden) {
     closeMenu();
   } else if (event.key === 'Escape' && !$('countdown').hidden) {

@@ -1,5 +1,18 @@
 # Changes
 
+## Unreleased
+
+- **A new look.** Each download is a card that fills up in its file's colour, with a big percentage. The
+  buttons show when you point at a card; click it for the parts, its link and its folder.
+- **A quieter status bar:** the speed and counts, *Pause all*, and one **⋯** menu with When done, Clear finished,
+  Mini mode and Settings. When something will happen once the downloads are done, the menu's button wears a dot
+  and the status line says what.
+- **Uses the room it has.** A wider window shows the cards in two or three columns.
+- **Remembers the window:** it opens where you left it, at the size you left it, and a bit larger the first time.
+- **Mini mode** (Ctrl+M, ⇧⌘M on a Mac): a small strip that stays on top and fills with every download together.
+  Click it to come back, drag it anywhere. If the computer is about to sleep or shut down, the window comes back
+  with the countdown.
+
 ## v0.2.0 (2026-10-18)
 
 - **When done:** put the computer to sleep, shut it down or quit indir once nothing is left to download. A

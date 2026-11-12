@@ -1,0 +1,15 @@
+<!doctype html>
+<!-- indir's page in a plain browser, with a stand-in for Tauri. Serve the repository's
+     root (python3 -m http.server) and open /tests/ui/preview.html?fixture=mixed.
+     ?page=mini shows the mini strip instead. The page's own functions
+     (openSettings, showCountdown, openAbove) open its sheets and menus. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>indir preview</title>
+  <script src="mock-tauri.js"></script>
+  <script src="preview.js"></script>
+</head>
+<body></body>
+</html>
