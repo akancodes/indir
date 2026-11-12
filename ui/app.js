@@ -14,41 +14,7 @@ let whenDone = 'nothing';
 /** The links last put in the field from the clipboard, so they aren't put there again. */
 let offered = '';
 
-/* Numbers in words */
-
-function size(bytes) {
-  if (bytes < 1000) return `${bytes} B`;
-  const units = ['KB', 'MB', 'GB', 'TB'];
-  let value = bytes;
-  let unit = -1;
-  do {
-    value /= 1000;
-    unit += 1;
-  } while (value >= 999.95 && unit < units.length - 1);
-  return `${value >= 100 ? Math.round(value) : value.toFixed(1)} ${units[unit]}`;
-}
-
-function duration(seconds) {
-  if (seconds < 60) return `${Math.max(1, Math.round(seconds))} s`;
-  const minutes = Math.round(seconds / 60);
-  if (minutes < 60) return `${minutes} min`;
-  return `${Math.floor(minutes / 60)} h ${minutes % 60} min`;
-}
-
-function finishedAt(unix) {
-  const date = new Date(unix * 1000);
-  if (date.toDateString() === new Date().toDateString()) {
-    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  }
-  return date.toLocaleDateString([], { day: 'numeric', month: 'short' });
-}
-
-function badge(name) {
-  const dot = name.lastIndexOf('.');
-  const extension = dot > 0 ? name.slice(dot + 1) : '';
-  if (!extension) return 'FILE';
-  return (extension.length <= 4 ? extension : extension.slice(0, 3)).toUpperCase();
-}
+const { size, duration, finishedAt, badge, startsOver } = window.indirLogic;
 
 /* Building blocks */
 
@@ -220,11 +186,6 @@ function sizePart(node, [start, end, upto], fresh) {
   return node;
 }
 
-/** A server that answered without byte ranges: going on means from the beginning. */
-function startsOver(item) {
-  return item.answered && !item.resumable;
-}
-
 function metaFor(item) {
   const of = item.size ? `${size(item.received)} of ${size(item.size)}` : size(item.received);
   switch (item.status) {
@@ -272,14 +233,7 @@ function render(next) {
   }
   $('empty').hidden = items.length > 0;
   $('clear').hidden = !items.some((item) => item.status === 'done');
-  const running = items.filter((item) => item.status === 'downloading');
-  const waiting = items.filter((item) => item.status === 'queued');
-  const speed = running.reduce((total, item) => total + item.speed, 0);
-  const words = [];
-  if (running.length) words.push(`${size(speed)}/s`, `${running.length} downloading`);
-  if (waiting.length) words.push(`${waiting.length} waiting`);
-  if (running.length && settings.speedLimit) words.push(`limit ${settings.speedLimit / 1e6} MB/s`);
-  $('summary').textContent = words.length ? words.join(' · ') : items.length ? 'Nothing downloading' : '';
+  $('summary').textContent = window.indirLogic.summary(items, settings.speedLimit, 'nothing');
   showAll();
   showWhenDone();
 }
