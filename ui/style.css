@@ -18,6 +18,23 @@
   --danger: #c93a16;
   --shadow: 0 1px 2px rgba(17, 19, 24, 0.06), 0 6px 20px rgba(17, 19, 24, 0.05);
   --backdrop: rgba(17, 19, 24, 0.28);
+  --soft: #4a505c;
+  --on-accent: #ffffff;
+  --archive: #6a5ae0;
+  --archive-fill: #e6e2ff;
+  --disc: #0e8f6c;
+  --disc-fill: #d3f3e8;
+  --video: #d9572f;
+  --video-fill: #ffe2d7;
+  --audio: #b37406;
+  --audio-fill: #fcebc9;
+  --app: #c8437d;
+  --app-fill: #fbdde9;
+  --document: #2a72d4;
+  --document-fill: #dbe8fb;
+  --other: #646b78;
+  --other-fill: #e6e8ed;
+  --done-fill: #d4f1de;
   --sans: -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI", system-ui, Ubuntu, Cantarell,
     "Noto Sans", sans-serif;
   --mono: ui-monospace, "SF Mono", "Cascadia Mono", "Segoe UI Mono", Menlo, Consolas, "DejaVu Sans Mono",
@@ -42,6 +59,23 @@
     --danger: #ff7a59;
     --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 6px 20px rgba(0, 0, 0, 0.3);
     --backdrop: rgba(0, 0, 0, 0.5);
+    --soft: #b4bac6;
+    --on-accent: #0e1014;
+    --archive: #a99cff;
+    --archive-fill: #2f2866;
+    --disc: #4fd6ac;
+    --disc-fill: #0f4337;
+    --video: #ff9a76;
+    --video-fill: #552616;
+    --audio: #f3bb4a;
+    --audio-fill: #4a3409;
+    --app: #f287b5;
+    --app-fill: #521d34;
+    --document: #7ab3ff;
+    --document-fill: #16365c;
+    --other: #a7afbd;
+    --other-fill: #2a2f39;
+    --done-fill: #133f28;
   }
 }
 
@@ -193,106 +227,295 @@ svg {
   75% { transform: translateX(4px); }
 }
 
-/* The list */
+/* The list: one card per download, its own background filling in its type's colour. */
 
 .list {
+  --gap: 10px;
   flex: 1;
+  display: grid;
+  /* A new column once each can be 420 px, three at most; cards stretch to fill. */
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, max(420px, calc((100% - 2 * var(--gap)) / 3))), 1fr));
+  grid-auto-rows: max-content;
+  /* Closed cards are all one height; an open one grows alone. */
+  align-items: start;
+  align-content: start;
+  gap: var(--gap);
   overflow-y: auto;
-  padding: 0 16px 8px;
+  padding: 4px 16px 12px;
 }
 
 .list:empty {
   display: none;
 }
 
-.row {
+.card {
+  --tint: var(--other-fill);
+  --accent: var(--other);
+  position: relative;
   display: grid;
-  grid-template-columns: 40px minmax(0, 1fr);
-  gap: 14px;
-  padding: 14px 4px 13px;
-  border-bottom: 1px solid var(--line);
+  grid-template-columns: 44px minmax(0, 1fr) auto;
+  grid-template-areas:
+    "badge text side"
+    "details details details";
+  align-items: center;
+  column-gap: 14px;
+  min-height: 76px;
+  padding: 14px 14px 14px 16px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  transition: border-color 0.2s, box-shadow 0.2s;
 }
 
-.row:last-child {
-  border-bottom: 0;
+.card:hover {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
+}
+
+.card:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.card[data-type="archive"] { --tint: var(--archive-fill); --accent: var(--archive); }
+.card[data-type="disc"] { --tint: var(--disc-fill); --accent: var(--disc); }
+.card[data-type="video"] { --tint: var(--video-fill); --accent: var(--video); }
+.card[data-type="audio"] { --tint: var(--audio-fill); --accent: var(--audio); }
+.card[data-type="app"] { --tint: var(--app-fill); --accent: var(--app); }
+.card[data-type="document"] { --tint: var(--document-fill); --accent: var(--document); }
+
+/* Behind everything: the card filling from the left. */
+.card > .fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 0;
+  background: var(--tint);
+  transition: width 0.5s linear, background-color 0.4s ease, opacity 0.4s ease;
+}
+
+.card > :not(.fill) {
+  position: relative;
+}
+
+/* The leading edge, while bytes arrive. */
+.card[data-status="downloading"]:not(.unknown) > .fill::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--accent);
+  opacity: 0.55;
+  animation: head 1.1s ease-in-out infinite;
+}
+
+@keyframes head {
+  50% { opacity: 0.25; }
+}
+
+.card[data-status="queued"] {
+  --accent: var(--muted);
+}
+
+.card[data-status="queued"] > .fill {
+  background: var(--lane);
+}
+
+.card[data-status="paused"] > .fill {
+  opacity: 0.5;
+}
+
+.card[data-status="failed"] {
+  border-color: var(--danger);
+  box-shadow: 0 0 0 1px var(--danger), var(--shadow);
+}
+
+.card[data-status="failed"] > .fill {
+  opacity: 0.4;
+}
+
+.card[data-status="done"] {
+  --tint: var(--done-fill);
+  --accent: var(--done);
+}
+
+/* The server didn't say how big the file is: a sheen runs across instead. */
+.card.unknown[data-status="downloading"] > .fill {
+  width: 100% !important;
+  background: linear-gradient(90deg, transparent 0%, var(--tint) 45%, var(--tint) 55%, transparent 100%);
+  background-size: 50% 100%;
+  background-repeat: no-repeat;
+  animation: sheen 1.8s ease-in-out infinite;
+}
+
+@keyframes sheen {
+  from { background-position: -100% 0; }
+  to { background-position: 200% 0; }
 }
 
 .badge {
+  grid-area: badge;
   display: grid;
   place-items: center;
-  width: 40px;
-  height: 40px;
-  border-radius: 10px;
-  background: var(--lane);
-  font: 700 10.5px var(--mono);
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: var(--accent);
+  color: var(--on-accent);
+  font: 700 11px var(--mono);
   letter-spacing: 0.02em;
 }
 
-.top {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-height: 26px;
+.text {
+  grid-area: text;
+  min-width: 0;
 }
 
 .name {
-  flex: 1;
-  min-width: 0;
+  display: block;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-  font-weight: 600;
+  font-size: 15px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+
+.words {
+  height: 20px;
+  margin-top: 2px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--soft);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.words span + span {
+  margin-left: 12px;
+}
+
+.words.error {
+  color: var(--danger);
+  font-weight: 550;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+/* The percentage and the buttons share one place: the buttons take it on hover or focus. */
+.side {
+  grid-area: side;
+  display: grid;
+  justify-items: end;
+  align-items: center;
+  min-width: 72px;
+}
+
+.percent,
+.actions {
+  grid-area: 1 / 1;
+  transition: opacity 0.15s ease;
+}
+
+.percent {
+  font-size: 28px;
+  font-weight: 750;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.card[data-status="queued"] .percent,
+.card[data-status="paused"] .percent,
+.card[data-status="failed"] .percent {
+  color: var(--muted);
+}
+
+.percent svg {
+  width: 30px;
+  height: 30px;
+  color: var(--done);
+  stroke-width: 2.4;
 }
 
 .actions {
   display: flex;
-  flex-shrink: 0;
   gap: 6px;
+  opacity: 0;
+  visibility: hidden;
 }
 
-.actions button {
-  height: 26px;
-  padding: 0 10px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--surface);
-  font-size: 12.5px;
-  font-weight: 500;
+.card:hover .actions,
+.card:focus-within .actions {
+  opacity: 1;
+  visibility: visible;
 }
 
-.actions button:hover {
-  border-color: var(--muted);
+.card:hover .percent,
+.card:focus-within .percent {
+  opacity: 0;
 }
 
-.actions .remove {
+.round {
   display: grid;
   place-items: center;
-  width: 26px;
+  width: 34px;
+  height: 34px;
   padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--ink);
+}
+
+.round:hover {
+  border-color: var(--accent, var(--muted));
+  color: var(--accent, var(--ink));
+}
+
+.round svg {
+  width: 17px;
+  height: 17px;
+  stroke-width: 1.9;
+}
+
+.round.remove {
   color: var(--muted);
 }
 
-.actions .remove svg {
-  width: 14px;
-  height: 14px;
-}
-
-.actions .remove.confirm {
+.round.remove.confirm {
   width: auto;
-  padding: 0 10px;
+  padding: 0 12px;
+  border-radius: 999px;
   border-color: var(--danger);
   color: var(--danger);
+  font-size: 12.5px;
+  font-weight: 600;
 }
 
-/* The strip */
+/* The details: a click on the card opens them. */
+.details {
+  grid-area: details;
+  display: none;
+  min-width: 0;
+  padding-top: 12px;
+}
+
+.card.open .details {
+  display: block;
+}
 
 .strip {
   position: relative;
-  height: 10px;
-  margin: 8px 0 7px;
+  height: 8px;
   overflow: hidden;
-  border-radius: 5px;
-  transition: height 0.4s ease 0.35s, margin 0.4s ease 0.35s;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--ink) 9%, transparent);
 }
 
 .part {
@@ -300,91 +523,39 @@ svg {
   top: 0;
   bottom: 0;
   overflow: hidden;
-  background: var(--lane);
-  border-right: 2px solid var(--bg);
-  transition: border-right-width 0.45s ease;
+  border-right: 2px solid var(--surface);
 }
 
 .part:last-child {
   border-right-width: 0;
 }
 
-.fill {
-  position: relative;
+.part-fill {
   display: block;
   width: 0;
   height: 100%;
-  background: var(--bytes);
-  transition: width 0.5s linear, background-color 0.45s ease;
+  background: var(--accent);
+  transition: width 0.5s linear;
 }
 
-/* Where each connection is writing right now. */
-.row[data-status="downloading"] .part:not(.complete) .fill::after {
-  content: "";
-  position: absolute;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  width: 3px;
-  background: var(--head);
-  animation: head 1.1s ease-in-out infinite;
-}
-
-@keyframes head {
-  50% { opacity: 0.3; }
-}
-
-/* The server didn't say how big the file is. */
-.strip.unknown .fill {
-  width: 30% !important;
-  animation: sweep 1.4s ease-in-out infinite;
-}
-
-@keyframes sweep {
-  from { transform: translateX(-100%); }
-  to { transform: translateX(340%); }
-}
-
-.row[data-status="paused"] .fill,
-.row[data-status="queued"] .fill {
-  background: var(--paused);
-}
-
-.row[data-status="failed"] .fill {
-  background: var(--danger);
-}
-
-/* Finished: the parts close up into one bar, and the bar settles. */
-.row[data-status="done"] .part {
-  border-right-width: 0;
-}
-
-.row[data-status="done"] .fill {
-  background: var(--done);
-}
-
-/* The strip's own ground is green too, so no seam shows between parts. */
-.row[data-status="done"] .strip {
-  height: 4px;
-  margin: 6px 0 5px;
-  background: var(--done);
-}
-
-.meta {
+.facts {
   display: flex;
   flex-wrap: wrap;
-  gap: 0 14px;
-  color: var(--muted);
+  gap: 2px 14px;
+  margin-top: 8px;
+  color: var(--soft);
   font: 12px/1.5 var(--mono);
-  font-variant-numeric: tabular-nums;
-}
-
-.meta .error {
-  color: var(--danger);
-  font-family: var(--sans);
-  font-size: 12.5px;
   user-select: text;
   -webkit-user-select: text;
+  cursor: text;
+}
+
+.facts span {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 /* Nothing on the list yet */
@@ -895,38 +1066,12 @@ kbd {
   background: var(--line);
 }
 
-/* A wide window: one line per download, in columns that line up. */
-@media (min-width: 1200px) {
-  .row {
-    grid-template-columns: 40px minmax(180px, 1fr) minmax(280px, 1.6fr) minmax(280px, 0.9fr) 230px;
-    grid-template-areas: "badge name strip meta actions";
-    align-items: center;
-    gap: 0 20px;
-    padding: 12px 4px;
-  }
-
-  .body,
-  .top {
-    display: contents;
-  }
-
-  .badge { grid-area: badge; }
-  .name { grid-area: name; }
-  .meta { grid-area: meta; }
-
-  .strip,
-  .row[data-status="done"] .strip {
-    grid-area: strip;
-    margin: 0;
-  }
-
-  .actions {
-    grid-area: actions;
-    justify-content: flex-end;
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
+  .card.unknown[data-status="downloading"] > .fill {
+    background: var(--tint);
+    opacity: 0.6;
+  }
+
   *,
   *::before,
   *::after {

@@ -14,7 +14,7 @@ let whenDone = 'nothing';
 /** The links last put in the field from the clipboard, so they aren't put there again. */
 let offered = '';
 
-const { size, duration, finishedAt, badge, startsOver } = window.indirLogic;
+const { badge, startsOver, typeGroup, fillFraction, cardWords } = window.indirLogic;
 
 /* Building blocks */
 
@@ -35,13 +35,6 @@ function icon(paths) {
     svg.append(path);
   }
   return svg;
-}
-
-function button(label, action) {
-  const node = el('button', '', label);
-  node.type = 'button';
-  node.addEventListener('click', () => run(action));
-  return node;
 }
 
 /** Runs a command, and says so if it fails. */
@@ -68,28 +61,68 @@ function hideProblem() {
   $('problem').hidden = true;
 }
 
-/* One row per download */
+/* One card per download */
+
+const icons = {
+  pause: ['M7.5 5v10M12.5 5v10'],
+  resume: ['M7 4.8v10.4l8.2-5.2z'],
+  startNow: ['M5.5 4.8v10.4l7.2-5.2z', 'M15 5v10'],
+  again: ['M15.5 10a5.5 5.5 0 1 1-1.6-3.9', 'M15.5 3.8v3.4h-3.4'],
+  open: ['M8 4.5H5.5a1 1 0 0 0-1 1v9a1 1 0 0 0 1 1h9a1 1 0 0 0 1-1V12', 'M11 4.5h4.5V9', 'M15.5 4.5L9 11'],
+  folder: ['M3.5 6a1 1 0 0 1 1-1h3.3l1.6 1.8h6.1a1 1 0 0 1 1 1V14a1 1 0 0 1-1 1H4.5a1 1 0 0 1-1-1z'],
+  remove: ['M5.5 5.5l9 9M14.5 5.5l-9 9'],
+  done: ['M4.5 10.5l3.6 3.6 7.4-8'],
+};
+
+/** A round button with an icon; its words are its label and tooltip. */
+function iconButton(label, paths, action) {
+  const node = el('button', 'round');
+  node.type = 'button';
+  node.title = label;
+  node.setAttribute('aria-label', label);
+  node.append(icon(paths));
+  node.addEventListener('click', () => run(action));
+  return node;
+}
 
 function createRow(item) {
   const r = {
-    row: el('article', 'row'),
+    row: el('article', 'card'),
+    fill: el('div', 'fill'),
     badge: el('div', 'badge'),
     name: el('span', 'name'),
+    words: el('div', 'words'),
+    percent: el('div', 'percent'),
     actions: el('div', 'actions'),
+    details: el('div', 'details'),
     strip: el('div', 'strip'),
-    meta: el('div', 'meta'),
+    facts: el('div', 'facts'),
     key: null,
     parts: -1,
     item,
   };
-  const top = el('div', 'top');
-  top.append(r.name, r.actions);
-  const body = el('div', 'body');
-  body.append(top, r.strip, r.meta);
-  r.row.append(r.badge, body);
+  r.row.tabIndex = 0;
+  const text = el('div', 'text');
+  text.append(r.name, r.words);
+  const side = el('div', 'side');
+  side.append(r.percent, r.actions);
+  r.details.append(r.strip, r.facts);
+  r.row.append(r.fill, r.badge, text, side, r.details);
+  // A click opens the details; a double click on a finished file opens the file.
+  r.row.addEventListener('click', (event) => {
+    if (event.target.closest('button, .facts')) return;
+    r.row.classList.toggle('open');
+  });
   r.row.addEventListener('dblclick', (event) => {
-    if (r.row.dataset.status === 'done' && !event.target.closest('button')) {
-      run(() => invoke('open_file', { id: item.id }));
+    if (r.row.dataset.status === 'done' && !event.target.closest('button, .facts')) {
+      run(() => invoke('open_file', { id: r.item.id }));
+    }
+  });
+  r.row.addEventListener('keydown', (event) => {
+    if (event.target !== r.row) return;
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      r.row.classList.toggle('open');
     }
   });
   r.row.addEventListener('contextmenu', (event) => {
@@ -102,32 +135,45 @@ function createRow(item) {
 function updateRow(r, item) {
   r.item = item;
   r.row.dataset.status = item.status;
+  r.row.dataset.type = typeGroup(item.name);
   r.badge.textContent = badge(item.name);
   if (r.name.textContent !== item.name) {
     r.name.textContent = item.name;
-    r.name.title = `${item.name}\n${item.url}`;
+    r.name.title = item.name;
   }
+  const fraction = fillFraction(item);
+  r.row.classList.toggle('unknown', fraction === null);
+  r.fill.style.width = `${(fraction ?? 0) * 100}%`;
+  if (item.status === 'done') {
+    if (!r.percent.firstChild || r.percent.firstChild.nodeName !== 'svg') r.percent.replaceChildren(icon(icons.done));
+  } else {
+    r.percent.textContent = fraction === null ? '' : `${Math.floor(fraction * 100)}%`;
+  }
+  const words = cardWords(item);
+  r.words.classList.toggle('error', words.error);
+  r.words.replaceChildren(...words.main.map((word) => el('span', '', word)));
   const key = `${item.status}:${item.resumable}:${item.answered}`;
   if (r.key !== key) {
     r.key = key;
     r.actions.replaceChildren(...actionsFor(item));
   }
   drawStrip(r, item);
-  r.meta.replaceChildren(...metaFor(item).map(([text, className]) => el('span', className, text)));
+  drawFacts(r, item);
 }
 
 function actionsFor(item) {
   const id = item.id;
   const buttons = [];
-  if (item.status === 'downloading') buttons.push(button('Pause', () => invoke('pause', { id })));
-  if (item.status === 'queued') buttons.push(button('Start now', () => invoke('start_now', { id })));
+  if (item.status === 'downloading') buttons.push(iconButton('Pause', icons.pause, () => invoke('pause', { id })));
+  if (item.status === 'queued') buttons.push(iconButton('Start now', icons.startNow, () => invoke('start_now', { id })));
   if (item.status === 'paused') {
-    buttons.push(button(startsOver(item) ? 'Start again' : 'Resume', () => invoke('resume', { id })));
+    const label = startsOver(item) ? 'Start again' : 'Resume';
+    buttons.push(iconButton(label, startsOver(item) ? icons.again : icons.resume, () => invoke('resume', { id })));
   }
-  if (item.status === 'failed') buttons.push(button('Try again', () => invoke('resume', { id })));
+  if (item.status === 'failed') buttons.push(iconButton('Try again', icons.again, () => invoke('resume', { id })));
   if (item.status === 'done') {
-    buttons.push(button('Open', () => invoke('open_file', { id })));
-    buttons.push(button(mac ? 'Show in Finder' : 'Show in folder', () => invoke('show_in_folder', { id })));
+    buttons.push(iconButton('Open', icons.open, () => invoke('open_file', { id })));
+    buttons.push(iconButton(mac ? 'Show in Finder' : 'Show in folder', icons.folder, () => invoke('show_in_folder', { id })));
   }
   buttons.push(removeButton(item));
   return buttons;
@@ -136,8 +182,8 @@ function actionsFor(item) {
 /** Removing a finished download only takes it off the list. An unfinished
     one loses what it has fetched, so that takes a second click. */
 function removeButton(item) {
-  const cross = icon(['M5 5l10 10M15 5L5 15']);
-  const node = el('button', 'remove');
+  const cross = icon(icons.remove);
+  const node = el('button', 'round remove');
   node.type = 'button';
   const finished = item.status === 'done';
   const label = finished ? 'Remove from the list (the file stays)' : 'Remove, and delete what it has fetched';
@@ -162,11 +208,11 @@ function removeButton(item) {
   return node;
 }
 
+/** The details' strip: the file as one bar, each connection's part filling from its own start. */
 function drawStrip(r, item) {
   let parts = item.parts;
   if (item.status === 'done' && parts.length === 0) parts = [[0, 1, 1]];
   if (parts.length === 0) parts = [[0, 1, item.size ? item.received / item.size : 0]];
-  r.strip.classList.toggle('unknown', item.status === 'downloading' && !item.size);
   if (r.parts !== parts.length) {
     // New elements get their sizes before they are shown, so nothing animates from zero.
     r.strip.replaceChildren(...parts.map((part) => sizePart(el('span', 'part'), part, true)));
@@ -177,7 +223,7 @@ function drawStrip(r, item) {
 }
 
 function sizePart(node, [start, end, upto], fresh) {
-  if (fresh) node.append(el('span', 'fill'));
+  if (fresh) node.append(el('span', 'part-fill'));
   node.style.left = `${start * 100}%`;
   node.style.width = `${(end - start) * 100}%`;
   const filled = end > start ? Math.min(1, Math.max(0, (upto - start) / (end - start))) : 1;
@@ -186,27 +232,17 @@ function sizePart(node, [start, end, upto], fresh) {
   return node;
 }
 
-function metaFor(item) {
-  const of = item.size ? `${size(item.received)} of ${size(item.size)}` : size(item.received);
-  switch (item.status) {
-    case 'downloading': {
-      if (!item.connections && !item.received) return [['Connecting…']];
-      const words = [[of]];
-      if (item.speed) words.push([`${size(item.speed)}/s`]);
-      if (item.eta !== null && item.speed) words.push([`${duration(item.eta)} left`]);
-      words.push([item.connections === 1 ? '1 connection' : `${item.connections} connections`]);
-      return words;
-    }
-    case 'queued':
-      return item.received ? [['Waiting for its turn'], [of]] : [['Waiting for its turn']];
-    case 'paused':
-      if (startsOver(item)) return [["Paused. This server can't resume, so it starts again from the beginning."]];
-      return item.received ? [['Paused'], [of]] : [['Paused']];
-    case 'failed':
-      return [[item.error || 'Stopped by a problem', 'error']];
-    default:
-      return [[size(item.size ?? item.received)], [`Finished ${finishedAt(item.finished ?? item.added)}`]];
+/** The details' words: connections while it downloads, the link and the folder. */
+function drawFacts(r, item) {
+  const facts = [];
+  if (item.status === 'downloading' && item.connections) {
+    facts.push(el('span', '', item.connections === 1 ? '1 connection' : `${item.connections} connections`));
   }
+  facts.push(el('span', 'fact-link', item.url), el('span', 'fact-folder', item.folder));
+  const key = facts.map((fact) => fact.textContent).join('\n');
+  if (r.facts.dataset.key === key) return;
+  r.facts.dataset.key = key;
+  r.facts.replaceChildren(...facts);
 }
 
 /* The whole window */
