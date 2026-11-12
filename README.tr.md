@@ -98,7 +98,8 @@ Sağ alttaki **⋯** menüsünde When done, Clear finished, Mini mode ve Setting
 bağlantı açabileceği (1, 2, 4, 8 ya da 16), aynı anda kaç indirmenin süreceği (başta 3) ve bir hız sınırı (başta
 kapalı) var. **When done** hiçbir şey kalmayınca bilgisayarı uyutur, kapatır ya da indir'den çıkar; seçiliyken
 ⋯ düğmesinde bir nokta olur ve durum satırı ne olacağını söyler. **Kısayollar:** Ctrl+L (Mac'te ⌘L) link
-alanına götürür, Ctrl+, (⌘,) Ayarlar'ı açar, Ctrl+M (⌘M) mini şeride geçirir ve geri getirir.
+alanına götürür, Ctrl+, (⌘,) Ayarlar'ı açar, Ctrl+M (Mac'te ⌘M küçülttüğü için ⇧⌘M) mini şeride
+geçirir.
 
 ## Nasıl çalışır
 

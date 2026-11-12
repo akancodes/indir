@@ -152,9 +152,13 @@ pub fn bring_forward(app: &AppHandle) {
     }
 }
 
-/// Swaps the main window for the strip.
+/// Swaps the main window for the strip, unless the countdown is running: that stays in view.
 #[tauri::command]
-fn show_mini(app: AppHandle) {
+fn show_mini(app: AppHandle, downloads: State<Downloads>) {
+    if downloads.counting_down() {
+        bring_forward(&app);
+        return;
+    }
     let (Some(main), Some(mini)) = (app.get_webview_window("main"), app.get_webview_window("mini")) else { return };
     // Some window managers place a window afresh each time it shows; the strip goes back where it was.
     let place = mini.outer_position().ok();

@@ -95,7 +95,8 @@ The **⋯** menu (bottom right) has When done, Clear finished, Mini mode and Set
 download may open: 1, 2, 4, 8 or 16; how many downloads run at once, 3 to begin with; and a speed limit, off to
 begin with. **When done** puts the computer to sleep, shuts it down or quits indir once nothing is left; while
 it is set, the ⋯ button wears a dot and the status line says what comes. **Shortcuts:** Ctrl+L (⌘L on a Mac)
-jumps to the link field, Ctrl+, (⌘,) opens Settings, Ctrl+M (⌘M) switches to the mini strip and back.
+jumps to the link field, Ctrl+, (⌘,) opens Settings, and Ctrl+M (⇧⌘M on a Mac, where ⌘M minimizes) switches
+to the mini strip.
 
 ## How it works
 

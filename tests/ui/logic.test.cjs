@@ -180,3 +180,59 @@ test('batch: a download that stops with a problem is shown', () => {
   assert.equal(views[0].problem, false);
   assert.equal(views[1].problem, true);
 });
+
+test('batch: a lone download that fails keeps the strip red once nothing is left', () => {
+  const a = item({ size: 100 });
+  const views = batchOver([{ ...a, received: 10 }], [{ ...a, status: 'failed', error: 'x', received: 10 }]);
+  assert.equal(views[1].problem, true);
+});
+
+test('batch: the red goes once the failed download is tried again or removed', () => {
+  const a = item({ size: 100 });
+  const views = batchOver([{ ...a, received: 10 }], [{ ...a, status: 'failed', error: 'x' }], []);
+  assert.equal(views[2].problem, false);
+});
+
+test('batch: an unfinished download removed mid-batch counts as settled, so the rest still moves', () => {
+  const a = item({ size: 1000 });
+  const b = item({ size: 100 });
+  const views = batchOver(
+    [{ ...a, received: 100 }, { ...b, received: 10, speed: 100 }],
+    [{ ...b, received: 99, speed: 100 }],
+  );
+  assert.equal(views[1].fraction, 1099 / 1100);
+  assert.ok(views[1].eta < 1, `eta ${views[1].eta}`);
+});
+
+test('batch: time left counts only what is still coming', () => {
+  const a = item({ size: 1000 });
+  const b = item({ size: 100 });
+  const views = batchOver(
+    [{ ...a, received: 100, speed: 50 }, { ...b, received: 50, speed: 50 }],
+    [{ ...a, status: 'paused', received: 100 }, { ...b, received: 50, speed: 50 }],
+  );
+  assert.equal(views[1].eta, 1);
+});
+
+test('shortcut: Ctrl+M elsewhere, Shift+Cmd+M on a Mac, where Cmd+M minimizes', () => {
+  const key = (k, mods = {}) => ({ key: k, ctrlKey: false, metaKey: false, shiftKey: false, ...mods });
+  assert.equal(logic.shortcut(key('m', { ctrlKey: true }), false), 'mini');
+  assert.equal(logic.shortcut(key('M', { metaKey: true, shiftKey: true }), true), 'mini');
+  assert.equal(logic.shortcut(key('m', { metaKey: true }), true), null);
+  assert.equal(logic.shortcut(key('l', { ctrlKey: true }), false), 'link');
+  assert.equal(logic.shortcut(key(',', { metaKey: true }), true), 'settings');
+  assert.equal(logic.shortcut(key('m'), false), null);
+});
+
+test('detailWords hold the whole problem, which the card line may cut', () => {
+  const long = 'The server answered 403: you need to be signed in to download this file, try your browser.';
+  const words = logic.detailWords(item({ status: 'failed', error: long }));
+  assert.ok(words.includes(long));
+  const over = logic.detailWords(item({ status: 'paused', answered: true, resumable: false }));
+  assert.ok(over.some((word) => word.includes('starts again from the beginning')));
+});
+
+test('detailWords: connections while it downloads, then the link and the folder', () => {
+  const words = logic.detailWords(item({ connections: 6, url: 'https://x/y.zip', folder: '/d' }));
+  assert.deepEqual(words, ['6 connections', 'https://x/y.zip', '/d']);
+});

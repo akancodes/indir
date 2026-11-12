@@ -321,6 +321,11 @@ impl Downloads {
         self.client.clone()
     }
 
+    /// Whether the minute before sleep, shut down or quit is running.
+    pub fn counting_down(&self) -> bool {
+        self.lock().countdown.is_some()
+    }
+
     pub fn views(&self) -> Vec<View> {
         self.lock().items.iter().filter(|item| !item.removing).map(Item::view).collect()
     }

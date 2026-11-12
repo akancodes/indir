@@ -143,6 +143,11 @@ check "countdown brings main back" "$(main_win | wc -l)" "1"
 check "countdown hides the strip" "$(mini_win | wc -l)" "0"
 sleep 1
 import -window root "$SHOTS/6-countdown.png"
+# The mini shortcut must not hide the countdown.
+key ctrl+m; sleep 1
+check "mini shortcut keeps the countdown in view" "$(main_win | wc -l)" "1"
+w=$(main_win | cut -d' ' -f1); [ -n "$w" ] || { xdotool mousemove --window "$(mini_win | cut -d' ' -f1)" 160 45; xdotool click 1; sleep 1; w=$(main_win | cut -d' ' -f1); }
+xdotool windowactivate --sync "$w" 2>/dev/null; sleep 0.3
 key Escape
 sleep 2
 check "Escape cancels the countdown (app still running)" "$(pgrep -x indir >/dev/null && echo running || echo gone)" "running"
@@ -164,5 +169,39 @@ quit_app; launch
 w=$(main_win | cut -d' ' -f1); xdotool windowactivate --sync "$w" 2>/dev/null
 key ctrl+m; wait_for mini_win
 check "strip place remembered after a relaunch" "$(mini_win | cut -d' ' -f2)" "$before"
+# Back to the main window, which is the one that quits: a click, since a window manager may
+# not hand the strip the keyboard.
+xdotool mousemove --window "$(mini_win | cut -d' ' -f1)" 160 45; sleep 0.2; xdotool click 1; wait_for main_win
 quit_app
+# 8. A file from start to end, paused on the way: its bytes equal the source's.
+rm -rf "$DATA" /root/Downloads /root/three.bin
+head -c 9000000 /dev/urandom > /files/three.bin
+launch
+w=$(main_win | cut -d' ' -f1); xdotool windowactivate --sync "$w" 2>/dev/null
+key ctrl+l
+xdotool type --delay 5 'http://127.0.0.1:8899/three.bin'
+key Return
+sleep 2
+# The card's buttons show on hover: pause is the one left of remove, at the card's right edge.
+# Two columns between 880 and 1300 px, one below: the first card's right edge follows from the width.
+ww=$(main_win | cut -d' ' -f2); ww=${ww%%x*}
+if [ "$ww" -ge 880 ]; then card_right=$((16 + (ww - 32 - 10) / 2)); else card_right=$((ww - 16)); fi
+pause_x=$((card_right - 15 - 34 - 6 - 17))
+xdotool mousemove --window "$w" 200 111; sleep 0.4
+xdotool mousemove --window "$w" "$pause_x" 111; sleep 0.3
+xdotool click 1; sleep 1.5
+status=$(python3 -c "import json;print(json.load(open('$DATA/downloads.json'))[0]['status'])" 2>/dev/null)
+check "pause from the card" "$status" "paused"
+import -window root "$SHOTS/8-paused.png"
+# The same place is now Resume.
+xdotool click 1; sleep 0.5
+# Downloads go to the system's Downloads folder, or home when there is none.
+got=""; i=0
+while [ -z "$got" ] && [ $i -lt 120 ]; do
+  got=$(find /root -maxdepth 2 -name three.bin 2>/dev/null | head -1); sleep 0.5; i=$((i + 1))
+done
+sleep 1
+check "file arrives whole ($got)" "$(sha256sum < "$got" 2>/dev/null)" "$(sha256sum < /files/three.bin)"
+quit_app
+
 echo "--- app.log"; tail -5 /gui/app.log

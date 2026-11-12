@@ -9,7 +9,7 @@
   and the status line says what.
 - **Uses the room it has.** A wider window shows the cards in two or three columns.
 - **Remembers the window:** it opens where you left it, at the size you left it, and a bit larger the first time.
-- **Mini mode** (Ctrl+M, ⌘M on a Mac): a small strip that stays on top and fills with every download together.
+- **Mini mode** (Ctrl+M, ⇧⌘M on a Mac): a small strip that stays on top and fills with every download together.
   Click it to come back, drag it anywhere. If the computer is about to sleep or shut down, the window comes back
   with the countdown.
 

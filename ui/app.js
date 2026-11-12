@@ -14,7 +14,7 @@ let whenDone = 'nothing';
 /** The links last put in the field from the clipboard, so they aren't put there again. */
 let offered = '';
 
-const { badge, startsOver, typeGroup, fillFraction, cardWords } = window.indirLogic;
+const { badge, startsOver, typeGroup, fillFraction, cardWords, detailWords, shortcut } = window.indirLogic;
 
 /* Building blocks */
 
@@ -152,6 +152,8 @@ function updateRow(r, item) {
   const words = cardWords(item);
   r.words.classList.toggle('error', words.error);
   r.words.replaceChildren(...words.main.map((word) => el('span', '', word)));
+  // The line may be cut; the whole of it is in its tooltip and in the details.
+  r.words.title = words.main.join(' · ');
   const key = `${item.status}:${item.resumable}:${item.answered}`;
   if (r.key !== key) {
     r.key = key;
@@ -232,17 +234,13 @@ function sizePart(node, [start, end, upto], fresh) {
   return node;
 }
 
-/** The details' words: connections while it downloads, the link and the folder. */
+/** The details' words: connections, the whole problem or warning, the link and the folder. */
 function drawFacts(r, item) {
-  const facts = [];
-  if (item.status === 'downloading' && item.connections) {
-    facts.push(el('span', '', item.connections === 1 ? '1 connection' : `${item.connections} connections`));
-  }
-  facts.push(el('span', 'fact-link', item.url), el('span', 'fact-folder', item.folder));
-  const key = facts.map((fact) => fact.textContent).join('\n');
+  const words = detailWords(item);
+  const key = words.join('\n');
   if (r.facts.dataset.key === key) return;
   r.facts.dataset.key = key;
-  r.facts.replaceChildren(...facts);
+  r.facts.replaceChildren(...words.map((word) => el('span', '', word)));
 }
 
 /* The whole window */
@@ -419,7 +417,7 @@ function moreMenu() {
     entries.push({ label: 'Clear finished', action: () => invoke('clear_finished') });
   }
   entries.push(
-    { label: 'Mini mode', keys: mac ? '⌘M' : 'Ctrl+M', action: () => invoke('show_mini') },
+    { label: 'Mini mode', keys: mac ? '⇧⌘M' : 'Ctrl+M', action: () => invoke('show_mini') },
     '-',
     { label: 'Settings', keys: mac ? '⌘,' : 'Ctrl+,', action: openSettings },
   );
@@ -572,17 +570,18 @@ $('menu').addEventListener('keydown', (event) => {
 });
 
 window.addEventListener('keydown', (event) => {
-  const command = mac ? event.metaKey : event.ctrlKey;
-  if (command && event.key.toLowerCase() === 'l') {
+  const action = shortcut(event, mac);
+  if (action === 'link') {
     event.preventDefault();
     $('link').focus();
     $('link').select();
-  } else if (command && event.key === ',') {
+  } else if (action === 'settings') {
     event.preventDefault();
     openSettings();
-  } else if (command && event.key.toLowerCase() === 'm') {
+  } else if (action === 'mini') {
     event.preventDefault();
-    run(() => invoke('show_mini'));
+    // The countdown stays in view: it has the Cancel.
+    if ($('countdown').hidden) run(() => invoke('show_mini'));
   } else if (event.key === 'Escape' && !$('menu').hidden) {
     closeMenu();
   } else if (event.key === 'Escape' && !$('countdown').hidden) {

@@ -4,7 +4,7 @@
 
 const { invoke } = window.__TAURI__.core;
 const { listen } = window.__TAURI__.event;
-const { nextBatch, batchView, size, duration } = window.indirLogic;
+const { nextBatch, batchView, size, duration, shortcut } = window.indirLogic;
 
 const $ = (id) => document.getElementById(id);
 const mac = navigator.userAgent.includes('Mac');
@@ -58,8 +58,7 @@ $('strip').addEventListener('mouseleave', () => {
 });
 
 window.addEventListener('keydown', (event) => {
-  const command = mac ? event.metaKey : event.ctrlKey;
-  if ((command && event.key.toLowerCase() === 'm') || event.key === 'Enter' || event.key === 'Escape') {
+  if (shortcut(event, mac) === 'mini' || event.key === 'Enter' || event.key === 'Escape') {
     event.preventDefault();
     invoke('show_main');
   }

@@ -82,7 +82,7 @@
         return { main: item.received ? ['Waiting its turn', of] : ['Waiting its turn'], error: false };
       case 'paused':
         if (startsOver(item)) {
-          return { main: ["Paused. This server can't resume, so it starts again from the beginning."], error: false };
+          return { main: [startsOverWords], error: false };
         }
         return { main: item.received ? ['Paused', of] : ['Paused'], error: false };
       case 'failed':
@@ -113,37 +113,48 @@
 
   const isActive = (item) => item.status === 'downloading' || item.status === 'queued';
 
-  function emptyBatch() {
-    return { ids: new Set(), sizes: new Map(), got: new Map(), shown: 0 };
+  function emptyBatch(failed = new Set()) {
+    return { ids: new Set(), sizes: new Map(), failed, shown: 0, total: 0, left: 0 };
   }
 
   /** The strip counts a batch: from the first download after an idle spell until nothing
-      downloads or waits. What joined it stays counted, finished or removed, and what it
-      shows only ever grows. */
+      downloads or waits. A download that left it (finished, paused, stopped, removed) counts
+      as settled, what it shows only ever grows, and one that stopped with a problem keeps the
+      strip red after the batch, until it is tried again or removed. */
   function nextBatch(batch, items) {
-    if (!items.some(isActive)) return emptyBatch();
-    const next = batch && batch.ids.size ? batch : emptyBatch();
+    const byId = new Map(items.map((item) => [item.id, item]));
+    const stillFailed = (ids) => new Set([...ids].filter((id) => byId.get(id)?.status === 'failed'));
+    if (!items.some(isActive)) {
+      return emptyBatch(batch ? stillFailed([...batch.ids, ...batch.failed]) : new Set());
+    }
+    const next = batch && batch.ids.size ? batch : emptyBatch(batch ? stillFailed(batch.failed) : new Set());
     for (const item of items) {
       if (isActive(item)) next.ids.add(item.id);
-      if (!next.ids.has(item.id)) continue;
-      if (item.size) next.sizes.set(item.id, item.size);
-      next.got.set(item.id, item.status === 'done' && item.size ? item.size : item.received);
+      if (next.ids.has(item.id) && item.size) next.sizes.set(item.id, item.size);
     }
     let total = 0;
     let got = 0;
+    let left = 0;
     for (const [id, bytes] of next.sizes) {
+      const item = byId.get(id);
       total += bytes;
-      got += Math.min(bytes, next.got.get(id) || 0);
+      if (item && isActive(item)) {
+        const received = Math.min(bytes, item.received);
+        got += received;
+        left += bytes - received;
+      } else {
+        got += bytes;
+      }
     }
     if (total) next.shown = Math.max(next.shown, Math.min(1, got / total));
     next.total = total;
-    next.left = total - got;
+    next.left = left;
     return next;
   }
 
   /** What the strip shows for a batch. */
   function batchView(batch, items) {
-    const inBatch = items.filter((item) => batch.ids.has(item.id));
+    const inBatch = items.filter((item) => batch.ids.has(item.id) || batch.failed.has(item.id));
     const running = inBatch.filter((item) => item.status === 'downloading');
     const speed = running.reduce((total, item) => total + item.speed, 0);
     return {
@@ -154,6 +165,32 @@
       waiting: inBatch.filter((item) => item.status === 'queued').length,
       problem: inBatch.some((item) => item.status === 'failed'),
     };
+  }
+
+  /** The window's shortcuts: link, settings or mini, or null. On a Mac, Cmd+M is the
+      system's Minimize, so mini mode is Shift+Cmd+M there. */
+  function shortcut(event, mac) {
+    if (!(mac ? event.metaKey : event.ctrlKey)) return null;
+    const key = event.key.toLowerCase();
+    if (key === 'l' && !event.shiftKey) return 'link';
+    if (key === ',') return 'settings';
+    if (key === 'm' && event.shiftKey === mac) return 'mini';
+    return null;
+  }
+
+  const startsOverWords = "Paused. This server can't resume, so it starts again from the beginning.";
+
+  /** The details under a card: connections while it downloads, the whole problem or warning
+      the card's one line may cut, the link and the folder. */
+  function detailWords(item) {
+    const words = [];
+    if (item.status === 'downloading' && item.connections) {
+      words.push(item.connections === 1 ? '1 connection' : `${item.connections} connections`);
+    }
+    if (item.status === 'failed') words.push(item.error || 'Stopped by a problem');
+    if (item.status === 'paused' && startsOver(item)) words.push(startsOverWords);
+    words.push(item.url, item.folder);
+    return words;
   }
 
   const api = {
@@ -168,6 +205,8 @@
     summary,
     nextBatch,
     batchView,
+    shortcut,
+    detailWords,
   };
   if (typeof module === 'object' && module.exports) module.exports = api;
   else root.indirLogic = api;
