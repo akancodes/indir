@@ -656,8 +656,8 @@ kbd {
   display: flex;
   align-items: center;
   gap: 8px;
-  height: 42px;
-  padding: 0 10px 0 20px;
+  height: 48px;
+  padding: 0 12px 0 20px;
   border-top: 1px solid var(--line);
   color: var(--muted);
   font-size: 12.5px;
@@ -696,35 +696,43 @@ kbd {
   text-decoration: underline;
 }
 
-/* What happens once everything is done. Loud once it's chosen. */
-.when-done {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  white-space: nowrap;
+/* The footer's round buttons: pause or resume all, and the menu. */
+.status .round {
+  width: 32px;
+  height: 32px;
+  color: var(--muted);
 }
 
-.when-done svg {
-  width: 14px;
-  height: 14px;
-  stroke-width: 1.9;
+.status .round:hover {
+  color: var(--ink);
+  border-color: var(--muted);
 }
 
-.when-done.armed {
-  padding: 3px 10px 3px 8px;
-  border: 1px solid var(--bytes);
-  border-radius: 999px;
-  color: var(--bytes);
-  font-weight: 600;
-}
-
-.when-done.armed:hover {
-  background: var(--bytes-ring);
-  color: var(--bytes);
-}
-
-.when-done[hidden] {
+.status .round[hidden] {
   display: none;
+}
+
+.more svg {
+  stroke-width: 3;
+}
+
+/* Something will happen once everything is done: a dot on the menu's button. */
+.more.armed {
+  position: relative;
+  border-color: var(--bytes);
+  color: var(--bytes);
+}
+
+.more.armed::after {
+  content: "";
+  position: absolute;
+  top: -1px;
+  right: -1px;
+  width: 9px;
+  height: 9px;
+  border: 2px solid var(--bg);
+  border-radius: 50%;
+  background: var(--bytes);
 }
 
 .pill {
@@ -757,10 +765,6 @@ kbd {
 .icon svg {
   width: 18px;
   height: 18px;
-}
-
-.status .icon svg circle {
-  fill: var(--bg);
 }
 
 /* Settings */
@@ -1019,6 +1023,16 @@ kbd {
 .menu-item:focus-visible {
   outline: none;
   background: var(--lane);
+}
+
+.menu-keys {
+  min-width: 0;
+  margin-left: auto;
+  padding: 0 0 0 24px;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font: 12px var(--sans);
 }
 
 /* The choices make room for their mark, ticked or not. */

@@ -268,8 +268,7 @@ function render(next) {
     }
   }
   $('empty').hidden = items.length > 0;
-  $('clear').hidden = !items.some((item) => item.status === 'done');
-  $('summary').textContent = window.indirLogic.summary(items, settings.speedLimit, 'nothing');
+  $('summary').textContent = window.indirLogic.summary(items, settings.speedLimit, whenDone);
   showAll();
   showWhenDone();
 }
@@ -280,7 +279,12 @@ function showAll() {
   const stopped = items.filter((item) => item.status === 'paused' || item.status === 'failed').length;
   const all = $('all');
   all.hidden = active ? active + stopped < 2 : stopped < 2;
-  all.textContent = active ? 'Pause all' : 'Resume all';
+  const label = active ? 'Pause all' : 'Resume all';
+  if (all.title !== label) {
+    all.title = label;
+    all.setAttribute('aria-label', label);
+    all.replaceChildren(icon(active ? icons.pause : icons.resume));
+  }
   all.dataset.command = active ? 'pause_all' : 'resume_all';
 }
 
@@ -292,12 +296,10 @@ const whenDoneWords = {
   quit: { button: 'Quit when done', title: 'Quitting indir', now: 'Quit now' },
 };
 
+/** A chosen action marks the menu's button, and the footer's line says it. */
 function showWhenDone() {
-  const active = items.some((item) => item.status === 'downloading' || item.status === 'queued');
-  const words = whenDoneWords[whenDone];
-  $('when-done').hidden = !active && !words;
-  $('when-done').classList.toggle('armed', Boolean(words));
-  $('when-done-label').textContent = words ? words.button : 'When done…';
+  $('more').classList.toggle('armed', Boolean(whenDoneWords[whenDone]));
+  $('summary').textContent = window.indirLogic.summary(items, settings.speedLimit, whenDone);
 }
 
 function showCountdown(countdown) {
@@ -342,10 +344,12 @@ function openMenu(entries, x, y) {
       if (entry.title) return el('div', 'menu-title', entry.title);
       const item = el('button', 'menu-item', entry.label);
       item.type = 'button';
+      if (entry.keys) item.append(el('kbd', 'menu-keys', entry.keys));
       item.setAttribute('role', entry.checked === undefined ? 'menuitem' : 'menuitemradio');
       if (entry.checked !== undefined) item.setAttribute('aria-checked', String(entry.checked));
       item.addEventListener('click', () => {
-        closeMenu();
+        // An entry that opens another menu in its place leaves the focus to it.
+        if (!entry.keep) closeMenu();
         run(entry.action);
       });
       return item;
@@ -392,15 +396,30 @@ const whenDoneChoices = [
   ['quit', 'Quit indir'],
 ];
 
-/** Opens above its button, at the bottom of the window. */
-function openWhenDone() {
-  const at = $('when-done').getBoundingClientRect();
+/** Opens above `anchor`, at the bottom of the window. */
+function openAbove(anchor, entries) {
+  const at = anchor.getBoundingClientRect();
+  openMenu(entries, at.right, at.top - 6);
+}
+
+function openWhenDone(anchor) {
   const choices = whenDoneChoices.map(([action, label]) => ({
     label,
     checked: whenDone === action,
     action: () => invoke('set_when_done', { action }),
   }));
-  openMenu([{ title: 'When the downloads are done' }, ...choices], at.left, at.top - 6);
+  openAbove(anchor, [{ title: 'When the downloads are done' }, ...choices]);
+}
+
+/** The footer's menu: what happens when done, clearing the list, settings. */
+function moreMenu() {
+  const words = whenDoneWords[whenDone];
+  const entries = [{ label: words ? `${words.button}…` : 'When done…', action: () => openWhenDone($('more')), keep: true }];
+  if (items.some((item) => item.status === 'done')) {
+    entries.push({ label: 'Clear finished', action: () => invoke('clear_finished') });
+  }
+  entries.push('-', { label: 'Settings', keys: mac ? '⌘,' : 'Ctrl+,', action: openSettings });
+  return entries;
 }
 
 /* Links just copied */
@@ -481,7 +500,7 @@ async function openSettings() {
 
 function closeSettings() {
   $('settings').hidden = true;
-  $('open-settings').focus();
+  $('more').focus();
 }
 
 /* Wiring */
@@ -495,7 +514,6 @@ $('link').addEventListener('input', () => {
   hideProblem();
   $('from-clipboard').hidden = true;
 });
-$('open-settings').addEventListener('click', openSettings);
 $('settings').addEventListener('click', (event) => {
   if (event.target === $('settings') || event.target.closest('[data-close]')) closeSettings();
 });
@@ -513,12 +531,11 @@ choose($('at-once'), 'set_at_once', 'atOnce');
 choose($('limit'), 'set_speed_limit', 'limit');
 $('project').addEventListener('click', () => invoke('open_project'));
 $('update').addEventListener('click', () => invoke('open_releases'));
-$('clear').addEventListener('click', () => run(() => invoke('clear_finished')));
 $('all').addEventListener('click', () => run(() => invoke($('all').dataset.command)));
-$('when-done').addEventListener('click', () => {
+$('more').addEventListener('click', () => {
   // A second click on the button closes its menu, which the press already did.
-  if (closeMenu.closedOn === $('when-done')) return;
-  openWhenDone();
+  if (closeMenu.closedOn === $('more')) return;
+  openAbove($('more'), moreMenu());
 });
 $('countdown-cancel').addEventListener('click', () => run(() => invoke('cancel_when_done')));
 $('countdown-now').addEventListener('click', () => run(() => invoke('when_done_now')));
