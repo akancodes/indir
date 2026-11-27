@@ -1,6 +1,6 @@
 # Changes
 
-## Unreleased
+## v0.3.0 (2026-11-27)
 
 - **A new look.** Each download is a card that fills up in its file's colour, with a big percentage. The
   buttons show when you point at a card; click it for the parts, its link and its folder.
@@ -15,6 +15,8 @@
 - **Mini mode** (Ctrl+M, ⇧⌘M on a Mac): a small strip that stays on top and fills with every download together.
   Click it to come back, drag it anywhere. If the computer is about to sleep or shut down, the window comes back
   with the countdown.
+- A window opening on a dark system no longer flashes white first.
+- Also in this release: everything listed under v0.2.0 below, which was never released on its own.
 
 ## v0.2.0 (2026-10-18)
 
