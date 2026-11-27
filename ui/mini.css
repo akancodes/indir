@@ -28,7 +28,7 @@ body.mini {
   bottom: 0;
   left: 0;
   width: 0;
-  background: var(--bytes-ring);
+  background: var(--bytes-fill);
   transition: width 0.5s linear;
 }
 
@@ -39,8 +39,8 @@ body.mini {
 .mini-percent {
   min-width: 0;
   font-size: 34px;
-  font-weight: 750;
-  letter-spacing: -0.03em;
+  font-weight: 700;
+  letter-spacing: -0.035em;
   font-variant-numeric: tabular-nums;
   line-height: 1;
 }
@@ -83,7 +83,7 @@ body.mini {
 /* Sizes nobody knows: a sheen runs across instead. */
 .strip-window.unknown .mini-fill {
   width: 100% !important;
-  background: linear-gradient(90deg, transparent 0%, var(--bytes-ring) 45%, var(--bytes-ring) 55%, transparent 100%);
+  background: linear-gradient(90deg, transparent 0%, var(--bytes-fill) 45%, var(--bytes-fill) 55%, transparent 100%);
   background-size: 50% 100%;
   background-repeat: no-repeat;
   animation: sheen 1.8s ease-in-out infinite;
@@ -91,6 +91,6 @@ body.mini {
 
 @media (prefers-reduced-motion: reduce) {
   .strip-window.unknown .mini-fill {
-    background: var(--bytes-ring);
+    background: var(--bytes-fill);
   }
 }
