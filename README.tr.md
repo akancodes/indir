@@ -185,4 +185,5 @@ Hata bildirimleri ve pull request'ler memnuniyetle karşılanır. indir küçük
 
 ## Lisans
 
-[MIT](LICENSE) © 2026 Bayram Akan
+[MIT](LICENSE) © 2026 Bayram Akan. `ui/fonts/` içindeki [Geist](https://github.com/vercel/geist-font) yazı tipleri
+[SIL Open Font License](ui/fonts/OFL.txt) ile gelir.
