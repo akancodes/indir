@@ -30,7 +30,7 @@ fn main() {
         .setup(|app| {
             app.manage(Downloads::load(app.handle())?);
             app.manage(Clipboard::default());
-            WebviewWindowBuilder::new(app, "main", WebviewUrl::default())
+            let main = WebviewWindowBuilder::new(app, "main", WebviewUrl::default())
                 .title("indir")
                 .inner_size(1000.0, 680.0)
                 .min_inner_size(480.0, 360.0)
@@ -40,8 +40,9 @@ fn main() {
                 // …and never opens one itself.
                 .on_navigation(is_own_page)
                 .build()?;
+            ground(&main);
             // Mini mode: a small strip that stays on top, hidden until it's asked for.
-            WebviewWindowBuilder::new(app, "mini", WebviewUrl::App("mini.html".into()))
+            let mini = WebviewWindowBuilder::new(app, "mini", WebviewUrl::App("mini.html".into()))
                 .title("indir")
                 .inner_size(320.0, 90.0)
                 .resizable(false)
@@ -53,6 +54,7 @@ fn main() {
                 .disable_drag_drop_handler()
                 .on_navigation(is_own_page)
                 .build()?;
+            ground(&mini);
             downloads::watch(app.handle().clone());
             Ok(())
         })
@@ -111,6 +113,15 @@ fn main() {
 /// What is remembered of each window between launches.
 fn window_state() -> StateFlags {
     StateFlags::SIZE | StateFlags::POSITION | StateFlags::MAXIMIZED
+}
+
+/// The window's own colour before the page paints: the ground of the page's theme for the system's light or dark,
+/// so a dark system sees no white flash when a window opens.
+fn ground(window: &WebviewWindow) {
+    let dark = matches!(window.theme(), Ok(tauri::Theme::Dark));
+    let color =
+        if dark { tauri::window::Color(0x19, 0x19, 0x18, 0xff) } else { tauri::window::Color(0xec, 0xea, 0xe7, 0xff) };
+    let _ = window.set_background_color(Some(color));
 }
 
 /// The window only ever shows indir's own page.

@@ -177,4 +177,5 @@ Bug reports and pull requests are welcome. indir means to stay small, so a new f
 
 ## License
 
-[MIT](LICENSE) © 2026 Bayram Akan
+[MIT](LICENSE) © 2026 Bayram Akan. The [Geist](https://github.com/vercel/geist-font) fonts in `ui/fonts/` are under
+the [SIL Open Font License](ui/fonts/OFL.txt).

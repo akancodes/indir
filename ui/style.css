@@ -1,82 +1,93 @@
-/* indir's window. One loud thing, the strip: the file as one bar, each
-   connection's part filling from its own start. Everything else stays quiet. */
+/* indir's window, in Nowline's look (nowline.css: warm greys, Geist). One loud thing, the card filling up:
+   colour only where it means something, the file's type and the download's state. Everything else stays quiet. */
 
 :root {
-  color-scheme: light dark;
-  --bg: #f6f7f9;
-  --surface: #ffffff;
-  --ink: #111318;
-  --muted: #5f6673;
-  --line: #e2e5ea;
-  --lane: #e3e7f2;
-  --bytes: #3347f5;
-  --action: #3347f5;
-  --bytes-ring: rgba(51, 71, 245, 0.2);
-  --head: #a4aeff;
-  --done: #129a55;
-  --paused: #a3abbb;
-  --danger: #c93a16;
-  --shadow: 0 1px 2px rgba(17, 19, 24, 0.06), 0 6px 20px rgba(17, 19, 24, 0.05);
-  --backdrop: rgba(17, 19, 24, 0.28);
-  --soft: #4a505c;
-  --on-accent: #ffffff;
-  --archive: #6a5ae0;
-  --archive-fill: #e6e2ff;
-  --disc: #0e8f6c;
-  --disc-fill: #d3f3e8;
-  --video: #d9572f;
-  --video-fill: #ffe2d7;
-  --audio: #b37406;
-  --audio-fill: #fcebc9;
-  --app: #c8437d;
-  --app-fill: #fbdde9;
-  --document: #2a72d4;
-  --document-fill: #dbe8fb;
-  --other: #646b78;
-  --other-fill: #e6e8ed;
-  --done-fill: #d4f1de;
-  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI", system-ui, Ubuntu, Cantarell,
-    "Noto Sans", sans-serif;
-  --mono: ui-monospace, "SF Mono", "Cascadia Mono", "Segoe UI Mono", Menlo, Consolas, "DejaVu Sans Mono",
-    "Liberation Mono", monospace;
+  /* indir's names for Nowline's tokens. */
+  --bg: var(--ground);
+  --surface: var(--screen);
+  --line: var(--rule);
+  --lane: var(--fill);
+  --muted: var(--ink-3);
+  --soft: var(--ink-2);
+  --action: var(--solid);
+  --on-action: var(--on-solid);
+  --sans: var(--display);
+  --shadow: none;
+  --lift: 0 10px 30px rgba(43, 42, 40, 0.08);
+  --lift-big: 0 24px 60px rgba(43, 42, 40, 0.14);
+  --backdrop: rgba(43, 42, 40, 0.22);
+  /* The colours that carry meaning, softened to sit on the warm greys: the mini strip's bytes, the states,
+     and one hue per file type (the badge, and the card's fill behind it). */
+  --bytes-fill: #dfe1ec;
+  --done: #3f8a5f;
+  --done-fill: #d9e8dc;
+  --paused: var(--ink-3);
+  --danger: #b44a30;
+  --on-accent: #f7f6f4;
+  --archive: #7668bf;
+  --archive-fill: #e4e0ef;
+  --disc: #2f8770;
+  --disc-fill: #d6e8e0;
+  --video: #c2643f;
+  --video-fill: #f1dfd5;
+  --audio: #a37a26;
+  --audio-fill: #eee4cd;
+  --app: #b4577f;
+  --app-fill: #efdce3;
+  --document: #4b76b2;
+  --document-fill: #dbe3ee;
+  --other: #77746f;
+  --other-fill: var(--fill);
 }
 
 @media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #0e1014;
-    --surface: #171a20;
-    --ink: #e9ebef;
-    --muted: #949bab;
-    --line: #262a33;
-    --lane: #1f2433;
-    --bytes: #7385ff;
-    /* Deeper than the bytes, so white text on it stays readable. */
-    --action: #4a5cf0;
-    --bytes-ring: rgba(115, 133, 255, 0.28);
-    --head: #c8ceff;
-    --done: #34c77b;
-    --paused: #596278;
-    --danger: #ff7a59;
-    --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 6px 20px rgba(0, 0, 0, 0.3);
-    --backdrop: rgba(0, 0, 0, 0.5);
-    --soft: #b4bac6;
-    --on-accent: #0e1014;
-    --archive: #a99cff;
-    --archive-fill: #2f2866;
-    --disc: #4fd6ac;
-    --disc-fill: #0f4337;
-    --video: #ff9a76;
-    --video-fill: #552616;
-    --audio: #f3bb4a;
-    --audio-fill: #4a3409;
-    --app: #f287b5;
-    --app-fill: #521d34;
-    --document: #7ab3ff;
-    --document-fill: #16365c;
-    --other: #a7afbd;
-    --other-fill: #2a2f39;
-    --done-fill: #133f28;
+  :root:not([data-theme="light"]) {
+    --lift: 0 10px 30px rgba(0, 0, 0, 0.35);
+    --lift-big: 0 24px 60px rgba(0, 0, 0, 0.45);
+    --backdrop: rgba(0, 0, 0, 0.45);
+    --bytes-fill: #282d3d;
+    --done: #7dc297;
+    --done-fill: #1f3327;
+    --danger: #e3876d;
+    --on-accent: #20201f;
+    --archive: #a99fdc;
+    --archive-fill: #2d2a3d;
+    --disc: #70c2a6;
+    --disc-fill: #1c332d;
+    --video: #e0956f;
+    --video-fill: #3b2a21;
+    --audio: #d6b067;
+    --audio-fill: #372f20;
+    --app: #db92b2;
+    --app-fill: #39252e;
+    --document: #8fb0dd;
+    --document-fill: #212d3b;
+    --other: #a19f9a;
   }
+}
+
+:root[data-theme="dark"] {
+  --lift: 0 10px 30px rgba(0, 0, 0, 0.35);
+  --lift-big: 0 24px 60px rgba(0, 0, 0, 0.45);
+  --backdrop: rgba(0, 0, 0, 0.45);
+  --bytes-fill: #282d3d;
+  --done: #7dc297;
+  --done-fill: #1f3327;
+  --danger: #e3876d;
+  --on-accent: #20201f;
+  --archive: #a99fdc;
+  --archive-fill: #2d2a3d;
+  --disc: #70c2a6;
+  --disc-fill: #1c332d;
+  --video: #e0956f;
+  --video-fill: #3b2a21;
+  --audio: #d6b067;
+  --audio-fill: #372f20;
+  --app: #db92b2;
+  --app-fill: #39252e;
+  --document: #8fb0dd;
+  --document-fill: #212d3b;
+  --other: #a19f9a;
 }
 
 * {
@@ -97,6 +108,7 @@ body {
   color: var(--ink);
   font: 14px/1.45 var(--sans);
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
   cursor: default;
   user-select: none;
   -webkit-user-select: none;
@@ -108,9 +120,14 @@ button {
   cursor: pointer;
 }
 
+::selection {
+  background: var(--solid);
+  color: var(--on-solid);
+}
+
 button:focus-visible,
 input:focus-visible {
-  outline: 2px solid var(--bytes);
+  outline: 2px solid var(--ink);
   outline-offset: 2px;
 }
 
@@ -139,22 +156,24 @@ svg {
   height: 44px;
   padding: 0 14px;
   border: 1px solid var(--line);
-  border-radius: 12px;
+  border-radius: 14px;
   background: var(--surface);
-  box-shadow: var(--shadow);
-  transition: border-color 0.15s, box-shadow 0.15s;
+  transition: border-color 0.15s;
 }
 
 .field:focus-within {
-  border-color: var(--bytes);
-  box-shadow: 0 0 0 3px var(--bytes-ring), var(--shadow);
+  border-color: var(--ink);
 }
 
 .field-icon {
   width: 18px;
   height: 18px;
   flex-shrink: 0;
-  color: var(--bytes);
+  color: var(--muted);
+}
+
+.field:focus-within .field-icon {
+  color: var(--ink);
 }
 
 .field input {
@@ -184,10 +203,10 @@ svg {
   flex-shrink: 0;
   padding: 2px 8px;
   border-radius: 999px;
-  background: var(--bytes-ring);
-  color: var(--bytes);
+  background: var(--lane);
+  color: var(--soft);
   font-size: 11.5px;
-  font-weight: 600;
+  font-weight: 500;
   white-space: nowrap;
 }
 
@@ -199,10 +218,10 @@ svg {
   flex-shrink: 0;
   height: 44px;
   padding: 0 20px;
-  border: 0;
-  border-radius: 12px;
+  border: 1px solid var(--action);
+  border-radius: 14px;
   background: var(--action);
-  color: #fff;
+  color: var(--on-action);
   font-weight: 600;
 }
 
@@ -265,8 +284,7 @@ svg {
   border: 1px solid var(--line);
   border-radius: 16px;
   background: var(--surface);
-  box-shadow: var(--shadow);
-  transition: border-color 0.2s, box-shadow 0.2s;
+  transition: border-color 0.2s;
 }
 
 .card:hover {
@@ -331,7 +349,7 @@ svg {
 
 .card[data-status="failed"] {
   border-color: var(--danger);
-  box-shadow: 0 0 0 1px var(--danger), var(--shadow);
+  box-shadow: inset 0 0 0 1px var(--danger);
 }
 
 .card[data-status="failed"] > .fill {
@@ -366,8 +384,8 @@ svg {
   border-radius: 12px;
   background: var(--accent);
   color: var(--on-accent);
-  font: 700 11px var(--mono);
-  letter-spacing: 0.02em;
+  font: 650 11px var(--mono);
+  letter-spacing: 0.01em;
 }
 
 .text {
@@ -381,7 +399,7 @@ svg {
   white-space: nowrap;
   text-overflow: ellipsis;
   font-size: 15px;
-  font-weight: 650;
+  font-weight: 600;
   letter-spacing: -0.01em;
 }
 
@@ -422,10 +440,13 @@ svg {
   transition: opacity 0.15s ease;
 }
 
+/* Hidden, the percentage still sits above the buttons (its opacity makes a layer of its own): it never takes
+   the pointer, so a click meant for a button reaches it, and a click elsewhere still opens the card. */
 .percent {
+  pointer-events: none;
   font-size: 28px;
-  font-weight: 750;
-  letter-spacing: -0.03em;
+  font-weight: 700;
+  letter-spacing: -0.035em;
   font-variant-numeric: tabular-nums;
   line-height: 1;
 }
@@ -440,7 +461,7 @@ svg {
   width: 30px;
   height: 30px;
   color: var(--done);
-  stroke-width: 2.4;
+  stroke-width: 2.2;
 }
 
 .actions {
@@ -474,8 +495,8 @@ svg {
 }
 
 .round:hover {
-  border-color: var(--accent, var(--muted));
-  color: var(--accent, var(--ink));
+  border-color: var(--ink);
+  color: var(--ink);
 }
 
 .round svg {
@@ -574,18 +595,19 @@ svg {
 .empty h1 {
   margin: 14px 0 0;
   font-size: 30px;
-  font-weight: 750;
-  letter-spacing: -0.03em;
+  font-weight: 700;
+  letter-spacing: -0.035em;
   line-height: 1.1;
 }
 
 .empty p {
   max-width: 400px;
   margin: 0;
-  color: var(--muted);
+  color: var(--soft);
 }
 
 .keys {
+  color: var(--muted);
   font-size: 12.5px;
 }
 
@@ -598,7 +620,7 @@ kbd {
   border-radius: 6px;
   background: var(--surface);
   color: var(--ink);
-  font: 600 11.5px var(--mono);
+  font: 500 11.5px var(--mono);
 }
 
 /* A card filling up, then done, again and again: what indir does, without words. */
@@ -615,7 +637,6 @@ kbd {
   border: 1px solid var(--line);
   border-radius: 16px;
   background: var(--surface);
-  box-shadow: var(--shadow);
 }
 
 .demo > span {
@@ -639,7 +660,7 @@ kbd {
   border-radius: 10px;
   background: var(--archive);
   color: var(--on-accent);
-  font: 700 10px var(--mono);
+  font: 650 10px var(--mono);
   animation: demo-badge 4.2s ease-in-out infinite;
 }
 
@@ -665,7 +686,7 @@ kbd {
   content: "\2713";
   color: var(--done);
   font-size: 24px;
-  font-weight: 750;
+  font-weight: 700;
   opacity: 0;
   animation: demo-done 4.2s ease-in-out infinite;
 }
@@ -697,7 +718,7 @@ kbd {
   height: 48px;
   padding: 0 12px 0 20px;
   border-top: 1px solid var(--line);
-  color: var(--muted);
+  color: var(--soft);
   font-size: 12.5px;
 }
 
@@ -726,12 +747,16 @@ kbd {
 
 .link {
   padding: 0;
-  color: var(--bytes);
+  color: var(--ink);
+  text-decoration: underline;
+  text-decoration-color: var(--line);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
 }
 
 .link:hover {
-  color: var(--bytes);
-  text-decoration: underline;
+  color: var(--ink);
+  text-decoration-color: var(--ink);
 }
 
 /* The footer's round buttons: pause or resume all, and the menu. */
@@ -743,7 +768,7 @@ kbd {
 
 .status .round:hover {
   color: var(--ink);
-  border-color: var(--muted);
+  border-color: var(--ink);
 }
 
 .status .round[hidden] {
@@ -757,8 +782,8 @@ kbd {
 /* Something will happen once everything is done: a dot on the menu's button. */
 .more.armed {
   position: relative;
-  border-color: var(--bytes);
-  color: var(--bytes);
+  border-color: var(--ink);
+  color: var(--ink);
 }
 
 .more.armed::after {
@@ -770,15 +795,15 @@ kbd {
   height: 9px;
   border: 2px solid var(--bg);
   border-radius: 50%;
-  background: var(--bytes);
+  background: var(--ink);
 }
 
 .pill {
   padding: 3px 10px;
-  border: 1px solid var(--bytes);
+  border: 1px solid var(--action);
   border-radius: 999px;
-  background: transparent;
-  color: var(--bytes);
+  background: var(--action);
+  color: var(--on-action);
   font-size: 12px;
   font-weight: 600;
 }
@@ -832,7 +857,7 @@ kbd {
   border: 1px solid var(--line);
   border-radius: 20px;
   background: var(--surface);
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.25);
+  box-shadow: var(--lift-big);
 }
 
 .sheet-card header {
@@ -845,6 +870,8 @@ kbd {
 .sheet-card h2 {
   margin: 0;
   font-size: 17px;
+  font-weight: 650;
+  letter-spacing: -0.015em;
 }
 
 .sheet-card section {
@@ -853,8 +880,9 @@ kbd {
 
 .sheet-card h3 {
   margin: 0 0 8px;
-  font-size: 13px;
-  font-weight: 600;
+  color: var(--soft);
+  font-size: 12.5px;
+  font-weight: 500;
 }
 
 .folder {
@@ -886,16 +914,20 @@ kbd {
   height: 32px;
   padding: 0 12px;
   border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--surface);
-  font-weight: 500;
+  border-radius: 11px;
+  background: transparent;
+  font-weight: 600;
+}
+
+.folder button:hover {
+  border-color: var(--ink);
 }
 
 .segmented {
   display: flex;
   padding: 3px;
   border-radius: 12px;
-  background: var(--bg);
+  background: var(--lane);
 }
 
 .segmented button {
@@ -905,13 +937,18 @@ kbd {
   border-radius: 8px;
   background: transparent;
   color: var(--muted);
-  font: 600 13px var(--mono);
+  font: 500 13px var(--mono);
   border-radius: 9px;
+}
+
+.segmented button:hover {
+  color: var(--ink);
 }
 
 .segmented button[aria-checked="true"] {
   background: var(--action);
-  color: #fff;
+  color: var(--on-action);
+  font-weight: 600;
 }
 
 .segmented.small button {
@@ -950,12 +987,12 @@ kbd {
 }
 
 .ring-left {
-  stroke: var(--bytes);
+  stroke: var(--ink);
   transition: stroke-dashoffset 1s linear;
 }
 
 .ring span {
-  font: 700 34px/1 var(--mono);
+  font: 600 34px/1 var(--mono);
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.02em;
 }
@@ -963,12 +1000,13 @@ kbd {
 .countdown h2 {
   margin: 0;
   font-size: 20px;
-  letter-spacing: -0.01em;
+  font-weight: 650;
+  letter-spacing: -0.02em;
 }
 
 .countdown p {
   margin: 6px 0 20px;
-  color: var(--muted);
+  color: var(--soft);
 }
 
 .countdown-actions {
@@ -984,18 +1022,18 @@ kbd {
   height: 44px;
   padding: 0 16px;
   border: 1px solid var(--line);
-  border-radius: 12px;
-  background: var(--surface);
+  border-radius: 14px;
+  background: transparent;
   font-weight: 600;
 }
 
 .secondary:hover {
-  border-color: var(--muted);
+  border-color: var(--ink);
 }
 
 .hint {
   margin: 6px 0 0;
-  color: var(--muted);
+  color: var(--soft);
   font-size: 12.5px;
 }
 
@@ -1020,7 +1058,7 @@ kbd {
   border: 1px solid var(--line);
   border-radius: 14px;
   background: var(--surface);
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
+  box-shadow: var(--lift);
   animation: fade 0.1s ease;
 }
 
@@ -1085,8 +1123,8 @@ kbd {
 }
 
 .menu-item[aria-checked="true"]::before {
-  border-color: var(--bytes);
-  background: var(--bytes);
+  border-color: var(--ink);
+  background: var(--ink);
 }
 
 /* A link dragged over the window */
@@ -1096,12 +1134,12 @@ kbd {
   inset: 8px;
   display: grid;
   place-items: center;
-  border: 2px dashed var(--bytes);
+  border: 1.5px dashed var(--ink-3);
   border-radius: 20px;
-  background: var(--bytes-ring);
-  color: var(--bytes);
+  background: color-mix(in srgb, var(--lane) 85%, transparent);
+  color: var(--ink);
   font-size: 16px;
-  font-weight: 650;
+  font-weight: 600;
   pointer-events: none;
 }
 

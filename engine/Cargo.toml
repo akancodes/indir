@@ -1,6 +1,6 @@
 [package]
 name = "indir-engine"
-version = "0.2.0"
+version = "0.3.0"
 description = "indir's download engine: one file over many connections, with pause and resume"
 license = "MIT"
 repository = "https://github.com/akancodes/indir"
