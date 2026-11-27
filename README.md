@@ -18,7 +18,7 @@
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshot-dark.png">
-  <img src="docs/screenshot-light.png" alt="indir with two files downloading in parts, one waiting its turn and one finished, set to shut the computer down when they are done">
+  <img src="docs/screenshot-light.png" alt="indir with two downloads filling their cards, one waiting its turn and one finished, set to shut the computer down when they are done">
 </picture>
 
 ## Why indir
@@ -54,8 +54,13 @@ one field to paste into, and a short page of settings.
 - **Says when a file is ready,** with a notification when indir isn't in front.
 - **Picks up a copied link.** Copy a link in your browser and switch to indir: it's already in the field, and
   Enter is all that's left. Right-click a download to copy its link, download it again or show it in its folder.
-- **Shows its work.** Each download's bar is the whole file, with every part filling in from its own start.
-  When the file is complete, the parts close up into one bar.
+- **Shows its work.** Each download is a card that fills up in its file's colour (archives purple, disc images
+  green, videos orange, apps pink, documents blue) with a big percentage beside the name. Click a card to see the
+  parts, each filling in from its own start, and its link and folder.
+- **Fits any window.** Widen it and the cards fall into two, then three columns; it opens where you left it, at
+  the size you left it.
+- **Shrinks to a strip.** *Mini mode* swaps the window for a small strip that stays on top of everything else and
+  fills with every download together. Click it to come back, drag it anywhere.
 - **Stays out of your way.** Light and dark follow your system. The progress also shows on the taskbar button
   or the Dock icon.
 
@@ -83,14 +88,15 @@ indir isn't signed with a paid Apple or Microsoft certificate, so your system as
 1. Copy a link to a file. In a browser, right-click the download link and choose *Copy link*.
 2. Paste it into indir and press Enter. Several links at once work too, one per line, and so does dragging a
    link onto the window.
-3. That's it. From the list you can pause, resume, open the file or show it in its folder; right-click a download
-   for the rest.
+3. That's it. Point at a download to pause, resume, open the file or show it in its folder; right-click it for
+   the rest, and click it for its details.
 
-**Settings** (bottom right) has where downloads go, your Downloads folder to begin with; how many connections each
+The **⋯** menu (bottom right) has When done, Clear finished, Mini mode and Settings. **Settings** has where downloads go, your Downloads folder to begin with; how many connections each
 download may open: 1, 2, 4, 8 or 16; how many downloads run at once, 3 to begin with; and a speed limit, off to
-begin with. **When done** (at the bottom, while something downloads) puts the computer to sleep, shuts it down or
-quits indir once nothing is left. **Shortcuts:** Ctrl+L (⌘L on a Mac) jumps to the link field, Ctrl+, (⌘,) opens
-Settings.
+begin with. **When done** puts the computer to sleep, shuts it down or quits indir once nothing is left; while
+it is set, the ⋯ button wears a dot and the status line says what comes. **Shortcuts:** Ctrl+L (⌘L on a Mac)
+jumps to the link field, Ctrl+, (⌘,) opens Settings, and Ctrl+M (⇧⌘M on a Mac, where ⌘M minimizes) switches
+to the mini strip.
 
 ## How it works
 
@@ -139,6 +145,8 @@ cargo run --release -p indir-engine --example get -- https://example.com/big.iso
   `~/.local/share/dev.akan.indir` on Linux.
 - **Names are cleaned up.** A name from the server loses anything Windows, macOS or Linux would choke on, and the
   invisible characters that could make `report.exe` pass for a PDF.
+- **On Linux with Wayland,** the desktop decides where windows open, so indir can't put its window or the mini
+  strip back where you left them, and the strip may not stay on top. On X11, Windows and macOS both work.
 - **Removing a download** takes it off the list. A finished file stays where it is; an unfinished one's
   `.indir` file is deleted.
 
@@ -152,13 +160,18 @@ npm install
 npm run dev      # the app, reloading as you edit ui/
 npm run build    # an installer for your system, in target/release/bundle
 cargo test       # every test; the engine's need no window
+node --test 'tests/ui/*.test.cjs'   # the window's own logic, without a window
 ```
+
+To see the window in a plain browser, serve the repository (`python3 -m http.server`) and open
+`/tests/ui/preview.html?fixture=mixed`; it runs `ui/` against a stand-in for the app.
 
 | Folder | What's in it |
 | --- | --- |
 | [`engine/`](engine) | The download engine: the first question, the parts, the connections, the steering and resuming. No UI. |
 | [`src-tauri/`](src-tauri) | The desktop app around it, built with [Tauri](https://tauri.app): the list, the settings, and the commands the window calls. |
-| [`ui/`](ui) | The window: plain HTML, CSS and JavaScript, with no build step. |
+| [`ui/`](ui) | The window and the mini strip: plain HTML, CSS and JavaScript, with no build step. |
+| [`tests/`](tests) | The window's logic tests, its browser preview, and checks of the real windows under Xvfb. |
 
 Bug reports and pull requests are welcome. indir means to stay small, so a new feature has to earn its place.
 

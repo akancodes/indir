@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>indir</title>
   <link rel="stylesheet" href="style.css">
+  <script src="logic.js" defer></script>
   <script src="app.js" defer></script>
 </head>
 <body>
@@ -26,7 +27,10 @@
 
   <section id="empty" class="empty" hidden>
     <div class="demo" aria-hidden="true">
-      <span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span>
+      <span class="demo-fill"></span>
+      <span class="demo-badge">ZIP</span>
+      <span class="demo-lines"><span></span><span></span></span>
+      <span class="demo-percent"></span>
     </div>
     <h1>Paste a link.</h1>
     <p>indir fetches the file in <span id="parts">8</span> parts at once, so it arrives sooner.
@@ -37,18 +41,9 @@
   <footer class="status">
     <span id="summary" class="summary"></span>
     <button id="update" class="pill" type="button" hidden></button>
-    <button id="when-done" class="quiet when-done" type="button" aria-haspopup="menu" hidden>
-      <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 3.5v6" /><path d="M6.4 5.8a5.8 5.8 0 1 0 7.2 0" /></svg>
-      <span id="when-done-label">When done…</span>
-    </button>
-    <button id="all" class="quiet" type="button" hidden></button>
-    <button id="clear" class="quiet" type="button" hidden>Clear finished</button>
-    <button id="open-settings" class="icon" type="button" aria-label="Settings" title="Settings">
-      <svg viewBox="0 0 20 20" aria-hidden="true">
-        <path d="M3 6h9M15 6h2M3 14h2M8 14h9" />
-        <circle cx="13.5" cy="6" r="1.8" />
-        <circle cx="6.5" cy="14" r="1.8" />
-      </svg>
+    <button id="all" class="round" type="button" hidden></button>
+    <button id="more" class="round more" type="button" aria-haspopup="menu" aria-label="More" title="More">
+      <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 10h.01M10 10h.01M15 10h.01" /></svg>
     </button>
   </footer>
 
